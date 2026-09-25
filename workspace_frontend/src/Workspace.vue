@@ -2,7 +2,8 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { getWo, workOrders, STAGE_LABELS, openWo, state, uiTopLoading, producedQty, HANDOVER_LABELS } from './store.js'
 import { fmtDate, qtyMain, qtyStack } from './format.js'
-import { ChevronLeft, Check, CheckCircle2 } from 'lucide-vue-next'
+import { ChevronLeft, Check, CheckCircle2, Printer } from 'lucide-vue-next'
+import { workOrderLabelUrl } from './work-order-label.js'
 import StagePersiapan from './stages/StagePersiapan.vue'
 import StageMaterial from './stages/StageMaterial.vue'
 import StageOperasi from './stages/StageOperasi.vue'
@@ -171,6 +172,12 @@ onMounted(() => {
         </button>
       </template>
     </nav>
+
+    <div v-if="wo.prepacking?.confirmed" class="toolbar ws-label-actions">
+      <a class="btn ws-label-print" :href="workOrderLabelUrl(wo.id)" target="_blank" rel="noopener noreferrer">
+        <Printer :size="14" :stroke-width="2" /> Cetak Label
+      </a>
+    </div>
 
     <p v-if="wo.uomWarning" class="callout">{{ wo.uomWarning }}</p>
     <p v-if="review" class="hint">Kolom kosong berarti belum tercatat.</p>

@@ -4,6 +4,7 @@ import { PackageCheck } from 'lucide-vue-next'
 import { savePrePacking, suggestionPreferences } from '../store.js'
 import { qtyMain } from '../format.js'
 import QtyInput from '../QtyInput.vue'
+import { workOrderLabelUrl } from '../work-order-label.js'
 
 const props = defineProps({
   wo: { type: Object, required: true },
@@ -50,9 +51,16 @@ const over = computed(() => total.value != null && total.value > props.wo.planne
 // FU12: panel dibuka ulang dari bar tahap setelah tahap ini lewat — mode perbaikan
 const reedit = computed(() => !props.review && ['postpacking', 'finish'].includes(props.wo.stage))
 
-function save() {
+async function save() {
   if (!canSave.value) return
-  savePrePacking(props.wo, {
+  // Reserve the popup during the click; browsers may block one opened after await.
+  const printWindow = window.open('', '_blank')
+  if (printWindow) {
+    printWindow.opener = null
+    printWindow.document.title = 'Menyiapkan label'
+    printWindow.document.body.textContent = 'Menyimpan Pre-Packing…'
+  }
+  const saved = await savePrePacking(props.wo, {
     goodQty: form.goodQty,
     rejectQty: form.rejectQty ?? 0,
     trialQty: form.trialQty ?? 0,
@@ -60,6 +68,13 @@ function save() {
     jam: form.jam,
     qc: String(form.qc).trim()
   })
+  if (!saved) {
+    if (printWindow && !printWindow.closed) printWindow.close()
+    return
+  }
+  if (printWindow && !printWindow.closed) {
+    printWindow.location.replace(workOrderLabelUrl(props.wo.id))
+  }
 }
 </script>
 

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Label {{ work_order | e }}</title>
+  <style>
+    @page { size: 50mm 30mm; margin: 0; }
+    html, body { margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; color: #000; }
+    .print-controls { padding: 12px; font: 13px Arial, sans-serif; }
+    .print-controls button { margin-left: 10px; cursor: pointer; }
+    .batch-label {
+      width: 50mm; height: 30mm; box-sizing: border-box;
+      padding: 12px 6px 5px; overflow: hidden; position: relative;
+      break-after: page; page-break-after: always;
+    }
+    .batch-label.last { break-after: auto; page-break-after: auto; }
+    .qr-block { float: left; width: 74px; text-align: center; }
+    .qr-block img { width: 74px; height: 74px; display: block; border: 0; }
+    .batch-id-small {
+      font-size: 8px; font-weight: 800; line-height: 1.05; margin-top: 2px;
+      letter-spacing: -0.2px; word-break: break-all; text-align: center;
+    }
+    .info-block { margin-left: 84px; margin-top: 2px; }
+    .item-name { font-size: 13px; font-weight: 900; line-height: 1.05; margin-bottom: 4px; }
+    .detail-row { font-size: 10px; font-weight: 800; line-height: 1.1; margin-bottom: 2px; white-space: nowrap; }
+    .dt-label { display: inline-block; width: 30px; vertical-align: top; }
+    .dt-colon { display: inline-block; width: 8px; vertical-align: top; }
+    .dt-value { font-weight: 900; white-space: normal; }
+    @media screen {
+      body { background: #f2f5f7; }
+      .batch-label { background: #fff; margin: 8px 12px; box-shadow: 0 1px 4px #0002; }
+    }
+    @media print {
+      .print-controls { display: none; }
+      .batch-label { margin: 0; box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="print-controls">
+    <strong>{{ label_count }} label</strong> untuk {{ work_order | e }}
+    <button type="button" onclick="window.print()">Cetak ulang</button>
+  </div>
+  {% for _ in labels %}
+  <div class="batch-label{% if loop.last %} last{% endif %}">
+    <div class="qr-block">
+      <img src="data:image/svg+xml;base64,{{ qr_svg_base64 }}" alt="QR SKU {{ sku | e }}">
+      <div class="batch-id-small">{{ sku | e }}</div>
+    </div>
+    <div class="info-block">
+      <div class="item-name">{{ item_name | e }}</div>
+      <div class="detail-row"><span class="dt-label">SKU</span><span class="dt-colon">:</span><span class="dt-value">{{ sku | e }}</span></div>
+      <div class="detail-row"><span class="dt-label">MFG</span><span class="dt-colon">:</span><span class="dt-value">{{ frappe.utils.formatdate(manufacturing_date, 'dd-MM-yy') if manufacturing_date else '-' }}</span></div>
+      <div class="detail-row"><span class="dt-label">EXP</span><span class="dt-colon">:</span><span class="dt-value">{{ frappe.utils.formatdate(expiry_date, 'dd-MM-yy') if expiry_date else '-' }}</span></div>
+    </div>
+  </div>
+  {% endfor %}
+  <script>
+    window.addEventListener('load', function () { window.print(); });
+  </script>
+</body>
+</html>

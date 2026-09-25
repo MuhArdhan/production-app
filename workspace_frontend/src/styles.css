@@ -678,6 +678,9 @@ textarea.input { height: auto; padding: 8px 10px; }
   .se-queue-row .c-arrow { display: none; }
 }
 
+.ws-label-actions { justify-content: flex-end; }
+.ws-label-print { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+
 /* FU51: Form Order on-demand — tombol aksi kanan; riwayat memakai pola
    wo-body (baris tidak klikabel, aksi Batalkan di kolom akhir) */
 .toolbar.fo-actions { justify-content: flex-end; }
