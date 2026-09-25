@@ -4,7 +4,7 @@ import { PackageCheck } from 'lucide-vue-next'
 import { savePrePacking, suggestionPreferences } from '../store.js'
 import { qtyMain } from '../format.js'
 import QtyInput from '../QtyInput.vue'
-import { workOrderLabelUrl } from '../work-order-label.js'
+import { offerLabelPrint } from '../label-print-prompt.js'
 
 const props = defineProps({
   wo: { type: Object, required: true },
@@ -53,13 +53,6 @@ const reedit = computed(() => !props.review && ['postpacking', 'finish'].include
 
 async function save() {
   if (!canSave.value) return
-  // Reserve the popup during the click; browsers may block one opened after await.
-  const printWindow = window.open('', '_blank')
-  if (printWindow) {
-    printWindow.opener = null
-    printWindow.document.title = 'Menyiapkan label'
-    printWindow.document.body.textContent = 'Menyimpan Pre-Packing…'
-  }
   const saved = await savePrePacking(props.wo, {
     goodQty: form.goodQty,
     rejectQty: form.rejectQty ?? 0,
@@ -68,13 +61,7 @@ async function save() {
     jam: form.jam,
     qc: String(form.qc).trim()
   })
-  if (!saved) {
-    if (printWindow && !printWindow.closed) printWindow.close()
-    return
-  }
-  if (printWindow && !printWindow.closed) {
-    printWindow.location.replace(workOrderLabelUrl(props.wo.id))
-  }
+  if (saved) offerLabelPrint(saved.id, saved.prepacking.goodQty)
 }
 </script>
 
