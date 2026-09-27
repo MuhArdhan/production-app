@@ -559,6 +559,20 @@ MR_CUSTOM_FIELDS = [
 		"insert_after": "from_warehouse",
 		"allow_on_submit": 0,
 	},
+	# W19: grup box bersama — MR anggota grup menunjuk rencana box fisik yang
+	# DIPAKAI BERSAMA (kg ditimbang per box fisik sekali, atribusi per-WO-per-box
+	# tidak ada). Ditulis endpoint create_group_request saat insert (sebelum
+	# submit) — tanpa allow_on_submit; hidden karena tidak diedit manusia.
+	{
+		"fieldname": "custom_handover_box_plan",
+		"label": "Handover Box Plan",
+		"fieldtype": "Link",
+		"options": "Handover Box Plan",
+		"insert_after": "custom_is_form_order",
+		"hidden": 1,
+		"read_only": 1,
+		"print_hide": 1,
+	},
 ]
 
 # Permission matrix (HANDOVER_PLAN.md §3). Rights not listed stay/stored 0 on
@@ -1410,8 +1424,10 @@ def ensure_workspace():
 	a button into the /production_workspace SPA. Idempotent upsert."""
 	# Sidebar gate (frappe/desk/desktop.py): users without the "Workspace Manager"
 	# role only see workspaces whose module is in their allow_modules, which is built
-	# from the modules of DocTypes they can read. This app defines no DocTypes, so
-	# anchor the workspace to Manufacturing (the Work Order doctype's module).
+	# from the modules of DocTypes they can read. The only doctype this app defines
+	# is Handover Box Plan (read: gudang/manufacturing roles, not System Manager by
+	# default), so anchor the workspace to Manufacturing (the Work Order doctype's
+	# module).
 	# `app` keeps the sidebar grouped under production_app, not erpnext.
 	module = "Manufacturing"
 	app = "production_app"

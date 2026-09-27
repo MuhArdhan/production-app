@@ -18,7 +18,7 @@ import { handoverCard } from './handover-card.js'
 import { boardMatch } from './handover-search.js'
 import { distinctItems, filterSerahRows, serahFilterCount } from './handover-filter.js'
 import { rowClickAction, seRouteLabel } from './handover-se.js'
-import { boxAllocationText } from './handover-box.js'
+import { boxAllocationText, groupBoxText } from './handover-box.js'
 import { laneStatusMeta } from './form-order.js'
 import {
   CheckCircle2, ChevronRight, ClipboardList, Filter, Inbox, KanbanSquare,
@@ -86,6 +86,10 @@ function lotCard(lot) {
   }
 }
 
+// W19: grup box bersama → satu baris ringkasan grup; baris normal tetap
+// chip per-box (incl. Box 3 W18). groupBoxText '' di baris non-grup.
+const boxText = (r) => groupBoxText(r) || boxAllocationText(r) || undefined
+
 function reqCard(r) {
   const lot0 = lotForWo(r.workOrder)
   const stopped = r.flag === 'stopped'
@@ -103,7 +107,7 @@ function reqCard(r) {
       timestampLabel: 'Waktu',
       timestamp: r.createdAt,
       units: lot0 || r,
-      box: boxAllocationText(r) || undefined
+      box: boxText(r)
     }),
     note: [stopped ? 'Dihentikan di Desk. Aktifkan kembali sebelum dilanjutkan.' : '', routeWarn(r)]
       .filter(Boolean).join(' · ')
@@ -126,7 +130,7 @@ function doneCard(r) {
       timestampLabel: 'Dikirim',
       timestamp: r.sentAt,
       units: lot0 || r,
-      box: boxAllocationText(r) || undefined
+      box: boxText(r)
     }),
     note: ''
   }
@@ -608,7 +612,7 @@ onMounted(() => {
           </div>
           <div class="sum-row">
             <span class="k">Box</span>
-            <span class="v" style="white-space: pre-line">{{ boxAllocationText(kirimReq) || '-' }}</span>
+            <span class="v" style="white-space: pre-line">{{ boxText(kirimReq) || '-' }}</span>
           </div>
         </div>
         <div class="boxgroup" style="margin-top: 14px">

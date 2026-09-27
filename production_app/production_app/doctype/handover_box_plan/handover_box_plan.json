@@ -1,0 +1,64 @@
+{
+ "actions": [],
+ "autoname": "format:HBP-{#####}",
+ "creation": "2026-09-28 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "item_code",
+  "boxes"
+ ],
+ "fields": [
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Item",
+   "options": "Item",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "boxes",
+   "fieldtype": "Table",
+   "label": "Box",
+   "options": "Handover Box Plan Item",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-28 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Production App",
+ "name": "Handover Box Plan",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Gudang Barang Jadi",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Stock User",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Manufacturing User"
+  },
+  {
+   "read": 1,
+   "role": "Manufacturing Manager"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

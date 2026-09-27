@@ -109,3 +109,18 @@ export function boxAllocationText(row) {
   }
   return lines.join('\n')
 }
+
+// W19 shared-box group: one summary line INSTEAD of the per-box chips — the
+// physical boxes are shared by the member WOs, so per-WO-per-box attribution
+// does not exist. E.g. "Group HBP-00012 (10 WO): 3 box · 45.5 kg · 96 Pack".
+// '' = not a group row (callers fall back to boxAllocationText).
+export function groupBoxText(row) {
+  if (!row || !row.boxPlan) return ''
+  const boxes = row.groupBoxes || []
+  if (!boxes.length) return ''
+  const unit = row.unit ? ` ${row.unit}` : ''
+  const kg = boxes.reduce((s, b) => s + (Number(b.kg) || 0), 0)
+  const qty = boxes.reduce((s, b) => s + (Number(b.qty) || 0), 0)
+  const size = row.groupSize != null ? ` (${row.groupSize} WO)` : ''
+  return `Group ${row.boxPlan}${size}: ${boxes.length} box · ${fmtNum(kg)} kg · ${fmtNum(qty)}${unit}`
+}

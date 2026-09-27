@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
-  boxAllocationText, expectedUnits, unitLabel, unitProblem, validateBoxAllocation
+  boxAllocationText, expectedUnits, groupBoxText, unitLabel, unitProblem, validateBoxAllocation
 } from '../src/handover-box.js'
 
 // UX check only — server validation (create_request T35/T39) stays authoritative.
@@ -166,4 +166,34 @@ test('unitLabel resolves the dialog label unit from the lot (T39 dynamic labels)
   assert.equal(unitLabel({ displayUom: 'Pcs', stockUom: 'Pcs' }), 'Pcs')
   assert.equal(unitLabel({ displayUom: null, stockUom: 'Pcs' }), 'Pcs')
   assert.equal(unitLabel(null), '')
+})
+
+test('groupBoxText renders the shared-box group summary (W19)', () => {
+  // the ruling's example shape: plan, live member count, box count, kg, unit
+  assert.equal(
+    groupBoxText({
+      boxPlan: 'HBP-00012', groupSize: 10, unit: 'Pack',
+      groupBoxes: [{ kg: 20.5, qty: 36 }, { kg: 15, qty: 40 }, { kg: 10, qty: 20 }]
+    }),
+    'Group HBP-00012 (10 WO): 3 box · 45.5 kg · 96 Pack'
+  )
+  // unit follows the row's display UOM (Pcs path)
+  assert.equal(
+    groupBoxText({ boxPlan: 'HBP-00013', groupSize: 2, unit: 'Pcs', groupBoxes: [{ kg: 7.5, qty: 22 }] }),
+    'Group HBP-00013 (2 WO): 1 box · 7.5 kg · 22 Pcs'
+  )
+  // a live count of 0 members (all shipped/cancelled elsewhere) stays rendered
+  assert.equal(
+    groupBoxText({ boxPlan: 'HBP-00014', groupSize: 0, unit: 'Pack', groupBoxes: [{ kg: 5, qty: 10 }] }),
+    'Group HBP-00014 (0 WO): 1 box · 5 kg · 10 Pack'
+  )
+})
+
+test('groupBoxText stays empty for normal rows and malformed groups (W19)', () => {
+  // non-group rows: the caller falls back to boxAllocationText
+  assert.equal(groupBoxText({ box1: 12.5, box1Qty: 20, unit: 'Pack' }), '')
+  assert.equal(groupBoxText(null), '')
+  assert.equal(groupBoxText({}), '')
+  // a plan without physical rows renders nothing (never "0 box · 0 kg")
+  assert.equal(groupBoxText({ boxPlan: 'HBP-00015', groupSize: 2, groupBoxes: [] }), '')
 })

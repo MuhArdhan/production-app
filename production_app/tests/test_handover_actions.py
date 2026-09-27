@@ -24,9 +24,18 @@
 # 8. Boxes: kg floats + whole Pack counts persist on the Work Order; never
 #    converted to PCS; MR stays a pure request document (no box fields).
 # 9. Legacy edge: WO with two Manufacture SEs -> create AND send refuse.
+# 10. W19 shared-box groups: create_group_request (same item, shared physical
+#     boxes) -> ONE Handover Box Plan + N member MRs carrying the plan link,
+#     WO box fields stay 0, Σ(box qty) == Σ(expected); single/mixed/mismatch/
+#     malformed-box rejections are zero-write; a member MR cannot be cancelled
+#     alone while siblings are active; cancel_group_request cancels every
+#     still-active member and leaves shipped members alone; the board row
+#     exposes box_plan/group_boxes/group_size.
 #
 # Every record is test-only (T24/t24-prefixed); the Frappe test framework rolls
 # the run back. The two real warehouses are never touched.
+
+import json
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -43,7 +52,9 @@ from erpnext.stock.doctype.batch.batch import get_batch_qty
 
 from production_app.api.handover import (
     _item_stock,
+    cancel_group_request,
     cancel_request,
+    create_group_request,
     create_request,
     handover_board,
     save_post_packing,
@@ -1636,3 +1647,230 @@ class TestHandoverActions(IntegrationTestCase):
 			warehouse_defaults_save(
 				handover_warehouse=self.target_wh, handover_source_warehouse=prior
 			)
+
+	# ---------------- W19. shared-box groups (Handover Box Plan endpoint)
+
+	@classmethod
+	def _group_item(cls):
+		"""A FRESH batchless Pack item per test — group fixtures must never
+		share a pool (batchless totals accumulate across the class-rollback
+		run, so a shared item would couple the group tests to test order)."""
+		fg = cls._make_item(f"{PREFIX}-FGGRP-{random_string(6).upper()}", batch=False)
+		cls._set_pack(fg)
+		return fg, cls._make_bom(fg)
+
+	@classmethod
+	def _group_ready(cls, *qtys):
+		"""Ready lots of ONE fresh item: (item_code, (wo, ...)). Batchless —
+		no Batch exists, so unlike _lot_ready this skips the batch lookup."""
+		fg, bom = cls._group_item()
+		wos = []
+		for q in qtys:
+			wo = cls._make_wo(q, item=fg, bom_no=bom)
+			cls._transfer(wo)
+			cls._manufacture(wo, q)
+			wos.append(wo)
+		return fg, wos
+
+	def _group_request(self, wos, boxes):
+		"""create_group_request as the gudang actor with list payloads."""
+		frappe.set_user(self.gudang)
+		try:
+			return create_group_request([w.name for w in wos], boxes)
+		finally:
+			frappe.set_user("Administrator")
+
+	def test_w19_group_request_happy_path_plan_members_and_board(self):
+		"""Two WOs of ONE item packed into TWO shared boxes: ONE Handover Box
+		Plan + two submitted member MRs (full produced qty each, plan link on
+		the header); the WO summaries carry the Link with ALL box fields 0
+		(shared boxes, per-WO-per-box attribution does not exist) and status
+		Diminta Gudang; the board row exposes box_plan/group_boxes/group_size
+		with `boxes` empty. Produksi cannot call the endpoint."""
+		fg, (wo1, wo2) = self._group_ready(60, 40)
+		boxes = [{"kg": 30.5, "qty": 12}, {"kg": 20.25, "qty": 8}]  # 12+8 = 20 Pack
+
+		frappe.set_user(self.prod)
+		try:
+			with self.assertRaises(frappe.PermissionError):
+				create_group_request([wo1.name, wo2.name], boxes)
+		finally:
+			frappe.set_user("Administrator")
+		self.assertEqual(self._bound_mr_count(wo1.name), 0)  # denied before writes
+
+		# JSON-string payloads (the exact HTTP shape)
+		result = self._group_request((wo1, wo2), json.dumps(boxes))
+		self.assertTrue(result["ok"])
+		self.assertTrue(result["box_plan"].startswith("HBP-"))
+		self.assertEqual(result["expected_unit_count"], 20)
+		plan = frappe.get_doc("Handover Box Plan", result["box_plan"])
+		self.assertEqual(plan.item_code, fg)
+		self.assertEqual([(flt(b.kg), b.qty) for b in plan.boxes], [(30.5, 12), (20.25, 8)])
+
+		self.assertEqual(len(result["material_requests"]), 2)
+		wo_by_mr = {
+			frappe.db.get_value("Material Request Item", {"parent": n}, "custom_work_order"): n
+			for n in result["material_requests"]
+		}
+		self.assertEqual(set(wo_by_mr), {wo1.name, wo2.name})
+		for wo, mr_name in ((wo1, wo_by_mr[wo1.name]), (wo2, wo_by_mr[wo2.name])):
+			mr = frappe.get_doc("Material Request", mr_name)
+			produced = flt(frappe.db.get_value("Work Order", wo.name, "produced_qty"))
+			self.assertEqual(mr.docstatus, 1)
+			self.assertEqual(mr.material_request_type, "Material Transfer")
+			self.assertEqual(mr.custom_handover_box_plan, plan.name)
+			self.assertEqual(mr.items[0].custom_work_order, wo.name)
+			self.assertEqual(flt(mr.items[0].qty), produced)  # R3: full qty
+			self.assertEqual(mr.set_warehouse, self.target_wh)
+			summary = self._summary(wo.name)
+			self.assertEqual(summary.custom_handover_material_request, mr_name)
+			self.assertEqual(summary.custom_handover_status, "Diminta Gudang")
+			self.assertEqual(
+				(flt(summary.custom_box_1), summary.custom_box_1_qty,
+				 flt(summary.custom_box_2), summary.custom_box_2_qty,
+				 flt(summary.custom_box_3), summary.custom_box_3_qty),
+				(0, 0, 0, 0, 0, 0),
+			)
+
+		board = handover_board()
+		for mr_name in result["material_requests"]:
+			row = self._req(board, mr_name)
+			self.assertEqual(row["lane"], "request")
+			self.assertEqual(row["boxes"], [])  # per-WO chips do not exist here
+			self.assertEqual(row["box_plan"], plan.name)
+			self.assertEqual(
+				row["group_boxes"], [{"kg": 30.5, "qty": 12}, {"kg": 20.25, "qty": 8}]
+			)
+			self.assertEqual(row["group_size"], 2)
+
+	def test_w19_group_request_rejections_are_zero_write(self):
+		"""Below-minimum, mixed items, Σ mismatch and malformed box rows are
+		rejected with Indonesian errors and ZERO writes (no plan, no MR)."""
+		fg, (wo1, wo2) = self._group_ready(60, 40)
+		fg2, bom2 = self._group_item()
+		wo_other = self._make_wo(50, item=fg2, bom_no=bom2)
+		self._transfer(wo_other)
+		self._manufacture(wo_other, 50)
+		plans_before = frappe.db.count("Handover Box Plan")
+		mrs_before = self._bound_mr_count(wo1.name) + self._bound_mr_count(wo2.name)
+
+		def rejects(work_orders, boxes, part):
+			frappe.set_user(self.gudang)
+			try:
+				with self.assertRaises(frappe.ValidationError) as ctx:
+					create_group_request(work_orders, boxes)
+			finally:
+				frappe.set_user("Administrator")
+			self.assertIn(part, str(ctx.exception))
+
+		# a group needs >= 2 distinct Work Orders (duplicates dedupe to one)
+		rejects([wo1.name], [{"kg": 10, "qty": 12}], "minimal 2 Work Order")
+		rejects([wo1.name, wo1.name], [{"kg": 10, "qty": 12}], "minimal 2 Work Order")
+		rejects(json.dumps([wo1.name, wo2.name]), [], "Minimal 1 box")
+		# ALL WOs must share one production_item (the distinct items are listed)
+		rejects([wo1.name, wo_other.name], [{"kg": 10, "qty": 20}], "satu item")
+		rejects([wo1.name, wo_other.name], [{"kg": 10, "qty": 20}], fg2)
+
+		# Σ(box qty) mismatch: both numbers in the message, zero writes
+		rejects([wo1.name, wo2.name], [{"kg": 30.5, "qty": 12}, {"kg": 20.25, "qty": 7}],
+			"harus tepat 20 Pack")
+		rejects([wo1.name, wo2.name], [{"kg": 30.5, "qty": 12}, {"kg": 20.25, "qty": 9}],
+			"(21) harus tepat 20 Pack")
+
+		# every row is a WEIGHED physical box: kg>0 AND whole qty>0, no blanks
+		for boxes, part in (
+			([{"kg": 0, "qty": 20}], "kg harus positif"),
+			([{"kg": -1, "qty": 20}], "non-negatif"),  # _finite_kg bound message
+			([{"kg": 50, "qty": 0}], "bilangan bulat positif"),
+			([{"kg": 50, "qty": 2.5}], "bilangan bulat"),
+			([{"kg": 50}], "bilangan bulat"),  # half row: qty missing
+			([{"qty": 20}], "kg yang valid"),  # half row: kg missing
+			(["bukan objek"], "harus objek"),
+			([{"kg": 1e308, "qty": 20}], "maksimal"),
+		):
+			rejects([wo1.name, wo2.name], boxes, part)
+
+		self.assertEqual(frappe.db.count("Handover Box Plan"), plans_before)
+		self.assertEqual(
+			self._bound_mr_count(wo1.name) + self._bound_mr_count(wo2.name), mrs_before
+		)
+
+	def test_w19_group_member_cancel_blocked_until_group_cancel(self):
+		"""cancel_request refuses a member while any sibling on the plan is
+		still active (group message names the plan); cancel_group_request
+		cancels every still-active member in one call, clears each WO summary,
+		and leaves the plan doc as the audit record; once no sibling is live a
+		plain cancel_request falls through to the normal docstatus guard."""
+		fg, (wo1, wo2) = self._group_ready(60, 40)
+		result = self._group_request(
+			(wo1, wo2), [{"kg": 30.5, "qty": 12}, {"kg": 20.25, "qty": 8}]
+		)
+		mr1, mr2 = sorted(result["material_requests"])
+
+		frappe.set_user(self.gudang)
+		try:
+			with self.assertRaises(frappe.ValidationError) as ctx:
+				cancel_request(mr1)
+			self.assertIn("bagian grup box", str(ctx.exception))
+			self.assertIn(result["box_plan"], str(ctx.exception))
+			self.assertEqual(frappe.db.get_value("Material Request", mr1, "docstatus"), 1)
+
+			done = cancel_group_request(result["box_plan"])
+		finally:
+			frappe.set_user("Administrator")
+		self.assertTrue(done["ok"])
+		self.assertEqual(done["cancelled"], [mr1, mr2])
+		self.assertEqual(done["skipped"], [])
+		for mr_name in (mr1, mr2):
+			self.assertEqual(frappe.db.get_value("Material Request", mr_name, "docstatus"), 2)
+		for wo in (wo1, wo2):
+			summary = self._summary(wo.name)
+			self.assertIsNone(summary.custom_handover_material_request)
+			self.assertFalse(summary.custom_handover_status)
+		self.assertTrue(frappe.db.exists("Handover Box Plan", result["box_plan"]))
+		# board row shows the cancelled members with the still-resolved group
+		row = self._req(handover_board(), mr1)
+		self.assertEqual(row["flag"], "cancelled")
+		self.assertEqual(row["group_size"], 0)  # no live members anymore
+		self.assertEqual(row["group_boxes"], [{"kg": 30.5, "qty": 12}, {"kg": 20.25, "qty": 8}])
+
+		# no live sibling remains -> a plain member cancel is no longer blocked
+		# by the group guard (it falls through to the docstatus refusal)
+		frappe.set_user(self.gudang)
+		try:
+			with self.assertRaises(frappe.ValidationError) as ctx:
+				cancel_request(mr1)
+			self.assertIn("docstatus 2", str(ctx.exception))
+		finally:
+			frappe.set_user("Administrator")
+
+	def test_w19_group_cancel_leaves_shipped_members_alone(self):
+		"""A member with submitted Stock Entry evidence is OUT of the group
+		cancel (its boxes physically went out) — only the still-active siblings
+		are cancelled; the shipped MR stays submitted."""
+		fg, (wo1, wo2) = self._group_ready(60, 40)
+		result = self._group_request(
+			(wo1, wo2), [{"kg": 30.5, "qty": 12}, {"kg": 20.25, "qty": 8}]
+		)
+		wo_by_mr = {
+			frappe.db.get_value("Material Request Item", {"parent": n}, "custom_work_order"): n
+			for n in result["material_requests"]
+		}
+		mr_sent = wo_by_mr[wo1.name]
+		mr_open = wo_by_mr[wo2.name]
+		self._send(frappe.get_doc("Material Request", mr_sent))
+
+		frappe.set_user(self.gudang)
+		try:
+			done = cancel_group_request(result["box_plan"])
+		finally:
+			frappe.set_user("Administrator")
+		self.assertEqual(done["cancelled"], [mr_open])
+		self.assertEqual(done["skipped"], [mr_sent])
+		self.assertEqual(frappe.db.get_value("Material Request", mr_sent, "docstatus"), 1)
+		self.assertEqual(frappe.db.get_value("Material Request", mr_open, "docstatus"), 2)
+		# the shipped member keeps its summary (Terkirim, Link retained)
+		summary = self._summary(wo1.name)
+		self.assertEqual(summary.custom_handover_material_request, mr_sent)
+		self.assertEqual(summary.custom_handover_status, "Terkirim")
+		self.assertIsNone(self._summary(wo2.name).custom_handover_material_request)

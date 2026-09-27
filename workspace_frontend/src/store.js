@@ -419,6 +419,8 @@ function mapRequest(r) {
     box1: r.box_1, box1Qty: r.box_1_qty,
     box2: r.box_2, box2Qty: r.box_2_qty,
     box3: r.box_3, box3Qty: r.box_3_qty,
+    // W19: grup box bersama — rencana fisik dipakai bersama anggota grup
+    boxPlan: r.box_plan || null, groupBoxes: r.group_boxes || [], groupSize: r.group_size ?? null,
     unit: r.display_uom || r.stock_uom,
     lane: r.lane, flag: r.flag,
     fromWarehouse: r.from_warehouse, toWarehouse: r.to_warehouse,
