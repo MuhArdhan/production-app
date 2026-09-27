@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Label {{ work_order | e }}</title>
+  <style>
+    @page { size: 50mm 30mm; margin: 0; }
+    html, body { width: 50mm; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; color: #000; }
+    .print-controls { padding: 12px; font: 13px Arial, sans-serif; }
+    .print-controls button { margin-left: 10px; cursor: pointer; }
+    .batch-label {
+      width: 189px; height: 113px; box-sizing: border-box;
+      padding: 12px 6px 5px 6px;
+      font-family: Arial, Helvetica, sans-serif; color: #000;
+      overflow: hidden; position: relative;
+      break-after: page; page-break-after: always;
+    }
+    .batch-label.last { break-after: auto; page-break-after: auto; }
+    .label-sequence {
+      position: absolute; top: 2px; right: 6px;
+      font-size: 7px; font-weight: 700; line-height: 1;
+      white-space: nowrap;
+    }
+    .qr-block { float: left; width: 74px; text-align: center; }
+    .qr-block img { width: 74px; height: 74px; display: block; border: 0; }
+    .batch-id-small {
+      font-size: 8px; font-weight: 800; line-height: 1.05;
+      margin-top: 2px; letter-spacing: -0.2px;
+      word-break: break-all; text-align: center;
+    }
+    .info-block { margin-left: 84px; margin-top: 2px; }
+    .item-name {
+      font-size: 15px; font-weight: 900;
+      line-height: 1.05; margin-bottom: 4px;
+    }
+    .item-name-dough .name-prefix {
+      display: block; font-size: 8px; font-weight: 800;
+      line-height: 1.05; margin-bottom: 1px;
+    }
+    .item-name-dough .name-main {
+      display: block; font-size: 15px; font-weight: 900;
+      line-height: 1.0;
+    }
+    .detail-row {
+      font-size: 10px; font-weight: 800; line-height: 1.1;
+      margin-bottom: 2px; white-space: nowrap;
+    }
+    .dt-label { display: inline-block; width: 30px; vertical-align: top; }
+    .dt-colon { display: inline-block; width: 8px; vertical-align: top; }
+    .dt-value { font-weight: 900; white-space: normal; }
+    @media screen {
+      body { width: auto; background: #f2f5f7; }
+      .batch-label { background: #fff; margin: 8px 12px; box-shadow: 0 1px 4px #0002; }
+    }
+    @media print {
+      .print-controls { display: none; }
+      .batch-label { margin: 0; box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="print-controls">
+    <strong>{{ label_count }} label</strong> untuk {{ work_order | e }}
+    <button type="button" onclick="window.print()">Cetak ulang</button>
+  </div>
+  {% for _ in labels %}
+  <div class="batch-label{% if loop.last %} last{% endif %}">
+    <div class="label-sequence">{{ loop.index }}/{{ label_count }}</div>
+    <div class="qr-block">
+      <img src="data:image/svg+xml;base64,{{ qr_svg_base64 }}" alt="QR SKU {{ sku | e }}">
+      <div class="batch-id-small">{{ sku | e }}</div>
+    </div>
+    <div class="info-block">
+      <div class="item-name{% if item_name_prefix %} item-name-dough{% endif %}">
+        {% if item_name_prefix %}
+          <span class="name-prefix">{{ item_name_prefix | e }}</span>
+          <span class="name-main">{{ item_name_main | e }}</span>
+        {% else %}
+          {{ item_name | e }}
+        {% endif %}
+      </div>
+      <div class="detail-row"><span class="dt-label">SKU</span><span class="dt-colon">:</span><span class="dt-value">{{ sku | e }}</span></div>
+      <div class="detail-row"><span class="dt-label">MFG</span><span class="dt-colon">:</span><span class="dt-value">{{ frappe.utils.formatdate(manufacturing_date, 'dd-MM-yy') if manufacturing_date else '-' }}</span></div>
+      <div class="detail-row"><span class="dt-label">EXP</span><span class="dt-colon">:</span><span class="dt-value">{{ frappe.utils.formatdate(expiry_date, 'dd-MM-yy') if expiry_date else '-' }}</span></div>
+    </div>
+  </div>
+  {% endfor %}
+  <script>
+    window.addEventListener('load', function () {
+      window.workOrderLabelReady = true;
+      if (new URLSearchParams(window.location.search).get('embedded') !== '1') window.print();
+    });
+  </script>
+</body>
+</html>

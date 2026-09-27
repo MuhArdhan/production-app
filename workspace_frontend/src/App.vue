@@ -6,6 +6,8 @@ import WarehouseSettings from './WarehouseSettings.vue'
 import HandoverBoard from './HandoverBoard.vue'
 import FormOrderPage from './FormOrderPage.vue'
 import FormOrderCreate from './FormOrderCreate.vue'
+import { labelPrintPrompt } from './label-print-prompt.js'
+import { workOrderLabelUrl } from './work-order-label.js'
 import { workOrders, loadList, loadListPreferences, loadSuggestionPreferences, state, uiTopLoading, handoverBoard, handoverRequests, handoverState, loadBoard, formOrderState } from './store.js'
 import { ClipboardCheck, ClipboardList, ChevronDown, LayoutGrid, Settings, HelpCircle, Factory, Package } from 'lucide-vue-next'
 
@@ -59,6 +61,18 @@ const navOpen = ref(false)
 // menu profil (2026-09-21): shortcut pulang ke Desk native (/app)
 const userMenu = ref(false)
 const errorDialog = ref(null)
+const labelPrintDialog = ref(null)
+const labelPrintFrame = ref(null)
+const printJob = ref(null)
+const extraLabelCount = ref(0)
+const labelCountValid = computed(() =>
+  extraLabelCount.value !== '' &&
+  Number.isInteger(Number(extraLabelCount.value)) &&
+  Number(extraLabelCount.value) >= 0 &&
+  labelPrintPrompt.labelCount + Number(extraLabelCount.value) <= 10000
+)
+const totalLabelCount = computed(() => labelPrintPrompt.labelCount + Number(extraLabelCount.value || 0))
+let printJobSequence = 0
 const errorClose = ref(null)
 const currentUser = window.workspace_user || 'Pengguna ERPNext'
 const initials = currentUser.split(' ').slice(0, 2).map(s => s[0]).join('')
@@ -82,6 +96,58 @@ watch(() => state.actionError, error => {
     errorClose.value?.focus()
   })
 })
+
+watch(() => labelPrintPrompt.workOrder, workOrder => {
+  if (!workOrder) return
+  extraLabelCount.value = 0
+  nextTick(() => {
+    if (!labelPrintDialog.value?.open) labelPrintDialog.value?.showModal()
+  })
+})
+
+function closeLabelPrint() {
+  if (labelPrintDialog.value?.open) labelPrintDialog.value.close()
+  extraLabelCount.value = 0
+  labelPrintPrompt.workOrder = ''
+  labelPrintPrompt.labelCount = 0
+  labelPrintPrompt.afterSave = false
+}
+
+function confirmLabelPrint() {
+  const workOrder = labelPrintPrompt.workOrder
+  if (!workOrder || !labelCountValid.value) return
+  printJob.value = {
+    key: ++printJobSequence,
+    url: workOrderLabelUrl(workOrder, Number(extraLabelCount.value)) + '&embedded=1'
+  }
+  closeLabelPrint()
+}
+
+function onLabelFrameLoad() {
+  const frameWindow = labelPrintFrame.value?.contentWindow
+  if (!frameWindow?.workOrderLabelReady) {
+    state.actionError = {
+      title: 'Cetak Label Gagal',
+      message: 'Halaman label tidak dapat dimuat. Buka kembali Work Order lalu coba cetak lagi.',
+      details: [],
+      hint: ''
+    }
+    printJob.value = null
+    return
+  }
+  try {
+    frameWindow.focus()
+    frameWindow.print()
+  } catch (_) {
+    state.actionError = {
+      title: 'Cetak Label Gagal',
+      message: 'Browser tidak dapat membuka dialog printer. Periksa izin cetak pada browser.',
+      details: [],
+      hint: ''
+    }
+    printJob.value = null
+  }
+}
 
 function closeError() {
   if (errorDialog.value?.open) errorDialog.value.close()
@@ -268,6 +334,32 @@ function onNavClick() {
         </footer>
       </div>
     </div>
+
+    <dialog ref="labelPrintDialog" class="dialog" aria-labelledby="label-print-title" @cancel.prevent="closeLabelPrint" @click.self="closeLabelPrint">
+      <h3 id="label-print-title">{{ labelPrintPrompt.afterSave ? 'Pre-Packing tersimpan' : 'Cetak label?' }}</h3>
+      <p>Cetak label untuk Work Order <strong>{{ labelPrintPrompt.workOrder }}</strong>?</p>
+      <p>Label sesuai Good Qty: {{ labelPrintPrompt.labelCount }}</p>
+      <label for="extra-label-count">Label tambahan</label>
+      <input id="extra-label-count" v-model.number="extraLabelCount" type="number" min="0" :max="Math.max(0, 10000 - labelPrintPrompt.labelCount)" step="1" inputmode="numeric" class="input" style="display: block; width: 100%; margin-top: 6px">
+      <p v-if="labelCountValid">Total cetak: <strong>{{ totalLabelCount }} label</strong></p>
+      <p v-else style="color: #b3261e">Masukkan bilangan bulat 0 atau lebih; maksimal 10.000 label per cetakan.</p>
+      <div class="dlg-actions">
+        <button class="btn" @click="closeLabelPrint">Nanti saja</button>
+        <button class="btn btn-primary" :disabled="!labelCountValid" @click="confirmLabelPrint">Ya, Cetak Label</button>
+      </div>
+    </dialog>
+
+    <iframe
+      v-if="printJob"
+      :key="printJob.key"
+      ref="labelPrintFrame"
+      :src="printJob.url"
+      title="Dokumen cetak label"
+      aria-hidden="true"
+      tabindex="-1"
+      style="position: fixed; left: -10000px; top: 0; width: 1px; height: 1px; border: 0"
+      @load="onLabelFrameLoad"
+    ></iframe>
 
     <dialog ref="errorDialog" class="dialog error-dialog" aria-labelledby="error-dialog-title" @cancel.prevent="closeError" @click.self="closeError">
       <div class="error-dialog-icon" aria-hidden="true">!</div>
