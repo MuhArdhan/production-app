@@ -418,6 +418,7 @@ function mapRequest(r) {
     // legacy; `unit` = satuan gudang item (Pack/Pcs/dll.) untuk label UI
     box1: r.box_1, box1Qty: r.box_1_qty,
     box2: r.box_2, box2Qty: r.box_2_qty,
+    box3: r.box_3, box3Qty: r.box_3_qty,
     unit: r.display_uom || r.stock_uom,
     lane: r.lane, flag: r.flag,
     fromWarehouse: r.from_warehouse, toWarehouse: r.to_warehouse,

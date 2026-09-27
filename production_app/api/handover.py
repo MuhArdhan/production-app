@@ -193,6 +193,7 @@ def _wo_lot_rows(wo_names=None):
 				# T35 summary block: bulk-loaded once, mapped onto request rows
 				"custom_handover_material_request",
 				"custom_box_1", "custom_box_1_qty", "custom_box_2", "custom_box_2_qty",
+				"custom_box_3", "custom_box_3_qty",
 			],
 			order_by="creation desc",
 			limit_page_length=0,
@@ -312,6 +313,8 @@ def _wo_lot_rows(wo_names=None):
 				"custom_box_1_qty": w.custom_box_1_qty,
 				"custom_box_2": w.custom_box_2,
 				"custom_box_2_qty": w.custom_box_2_qty,
+				"custom_box_3": w.custom_box_3,
+				"custom_box_3_qty": w.custom_box_3_qty,
 			}
 		)
 		unique = {b for b in cur["batches"] if b}
@@ -471,10 +474,12 @@ def _requests(wo_rows, wo_names=None, item_codes=None):
 			# the WO summary owns the boxes while its Link points here
 			box_1, box_1_qty = lot.custom_box_1 or None, lot.custom_box_1_qty or None
 			box_2, box_2_qty = lot.custom_box_2 or None, lot.custom_box_2_qty or None
+			box_3, box_3_qty = lot.custom_box_3 or None, lot.custom_box_3_qty or None
 		else:
 			# pre-cutover MR: legacy MR kg, count values never invented
 			box_1, box_1_qty = m.custom_box_1 or None, None
 			box_2, box_2_qty = m.custom_box_2 or None, None
+			box_3, box_3_qty = None, None  # MR never carried a Box 3 field
 		rows.append(
 			{
 				"mr": m.name,
@@ -495,7 +500,9 @@ def _requests(wo_rows, wo_names=None, item_codes=None):
 				"box_1_qty": box_1_qty,
 				"box_2": box_2,
 				"box_2_qty": box_2_qty,
-				"boxes": [b for b in (box_1, box_2) if b],
+				"box_3": box_3,
+				"box_3_qty": box_3_qty,
+				"boxes": [b for b in (box_1, box_2, box_3) if b],
 				"from_warehouse": m.set_from_warehouse or None,
 				"to_warehouse": m.set_warehouse or None,
 				"postpacking": {
@@ -677,6 +684,7 @@ def _handover_lanes(wo_names):
 WO_SUMMARY_FIELDS = (
 	"custom_handover_material_request",
 	"custom_box_1", "custom_box_1_qty", "custom_box_2", "custom_box_2_qty",
+	"custom_box_3", "custom_box_3_qty",
 )
 
 
@@ -686,7 +694,7 @@ def _sync_handover_summary(wo_names):
 	fields are read_only on the form — this controlled db write is the gate
 	(the role-gated actions + this sync + the migration share it). Clearing
 	rules (T35): a WO whose only evidence vanished (unsent cancelled MR, no
-	replacement) loses the Link and all four box values; a live or sent
+	replacement) loses the Link and all box values; a live or sent
 	request keeps the kg and never gains invented count values. Returns the
 	WO names actually written."""
 	wo_names = sorted({n for n in wo_names if n})
@@ -708,7 +716,7 @@ def _sync_handover_summary(wo_names):
 		if state:
 			if link != state["mr"]:
 				values["custom_handover_material_request"] = state["mr"]
-				# T36 ruling: the four box values belong to the request that owned
+				# T36 ruling: the box values belong to the request that owned
 				# the outgoing Link. Falling back to another MR (cancelled-unsent
 				# M2 above a sent M1) must never inherit them — and the MR is a
 				# pure request document, so the previous allocation is unrecoverable:
@@ -1128,8 +1136,8 @@ def _whole_count(value, label):
     return int(number)
 
 
-def _validate_box_allocation(box_1, qty_1, box_2, qty_2, expected, unit):
-    """Box 1 always positive; Box 2 exactly 0 kg/0 count or positive/positive;
+def _validate_box_allocation(box_1, qty_1, box_2, qty_2, box_3, qty_3, expected, unit):
+    """Box 1 always positive; Box 2/3 exactly 0 kg/0 count or positive/positive;
     the count sum must equal the server-computed count of the full amount."""
     if box_1 <= 0 or qty_1 <= 0:
         frappe.throw(_("Box 1 harus diisi: berat kg dan jumlah {0} harus positif.").format(unit))
@@ -1137,18 +1145,22 @@ def _validate_box_allocation(box_1, qty_1, box_2, qty_2, expected, unit):
         box_2 = qty_2 = 0  # Box 2 kosong sah (0 kg / 0 jumlah)
     elif box_2 <= 0 or qty_2 <= 0:
         frappe.throw(_("Box 2 harus kosong (0 kg / 0 jumlah) atau terisi keduanya."))
-    if qty_1 + qty_2 != expected:
+    if box_3 <= 0 and qty_3 <= 0:
+        box_3 = qty_3 = 0  # Box 3 kosong sah (0 kg / 0 jumlah)
+    elif box_3 <= 0 or qty_3 <= 0:
+        frappe.throw(_("Box 3 harus kosong (0 kg / 0 jumlah) atau terisi keduanya."))
+    if qty_1 + qty_2 + qty_3 != expected:
         frappe.throw(
-            _("Jumlah {0} Box 1 + Box 2 ({1}) harus tepat {2} {0}.").format(
-                unit, qty_1 + qty_2, expected
+            _("Jumlah {0} Box 1 + Box 2 + Box 3 ({1}) harus tepat {2} {0}.").format(
+                unit, qty_1 + qty_2 + qty_3, expected
             )
         )
-    return box_1, qty_1, box_2, qty_2
+    return box_1, qty_1, box_2, qty_2, box_3, qty_3
 
 
 @frappe.whitelist()
 @_retry_on_deadlock
-def create_request(work_order, box_1=None, box_1_qty=None, box_2=0, box_2_qty=0):
+def create_request(work_order, box_1=None, box_1_qty=None, box_2=0, box_2_qty=0, box_3=0, box_3_qty=0):
     """Gudang side (Gudang Barang Jadi / Stock User): submit a Material Transfer
     request for the Work Order's FULL produced qty (R3 — no qty dialog, drag is
     the direct action) carrying the validated box allocation. The source
@@ -1158,7 +1170,7 @@ def create_request(work_order, box_1=None, box_1_qty=None, box_2=0, box_2_qty=0)
 
     T35: ALL box/count validation happens under the WO row lock BEFORE any
     write; the native MR is inserted + submitted WITHOUT any box/postpacking
-    custom field, then the Work Order summary (Link + four box values) is
+    custom field, then the Work Order summary (Link + box values) is
     written atomically and the status synchronized — one transaction, zero
     writes on any failure."""
     _require_role(
@@ -1211,8 +1223,10 @@ def create_request(work_order, box_1=None, box_1_qty=None, box_2=0, box_2_qty=0)
     qtys_1 = _whole_count(box_1_qty, f"Box 1 ({unit})")
     kg_2 = _finite_kg(box_2, "Box 2", allow_blank=True)
     qtys_2 = _whole_count(box_2_qty, f"Box 2 ({unit})")
-    kg_1, qtys_1, kg_2, qtys_2 = _validate_box_allocation(
-        kg_1, qtys_1, kg_2, qtys_2, expected_units, unit
+    kg_3 = _finite_kg(box_3, "Box 3", allow_blank=True)
+    qtys_3 = _whole_count(box_3_qty, f"Box 3 ({unit})")
+    kg_1, qtys_1, kg_2, qtys_2, kg_3, qtys_3 = _validate_box_allocation(
+        kg_1, qtys_1, kg_2, qtys_2, kg_3, qtys_3, expected_units, unit
     )
 
     stock_uom = lot.stock_uom or frappe.db.get_value("Item", wo.production_item, "stock_uom")
@@ -1264,6 +1278,8 @@ def create_request(work_order, box_1=None, box_1_qty=None, box_2=0, box_2_qty=0)
             "custom_box_1_qty": qtys_1,
             "custom_box_2": kg_2,
             "custom_box_2_qty": qtys_2,
+            "custom_box_3": kg_3,
+            "custom_box_3_qty": qtys_3,
         },
         update_modified=False,
     )
@@ -1278,6 +1294,8 @@ def create_request(work_order, box_1=None, box_1_qty=None, box_2=0, box_2_qty=0)
         "box_1_qty": qtys_1,
         "box_2": kg_2,
         "box_2_qty": qtys_2,
+        "box_3": kg_3,
+        "box_3_qty": qtys_3,
         "board": _build_board(),
     }
 

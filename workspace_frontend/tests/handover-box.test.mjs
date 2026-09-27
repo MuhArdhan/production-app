@@ -35,6 +35,17 @@ test('validateBoxAllocation accepts the exact allocation and a valid two-box spl
   ), {})
 })
 
+test('validateBoxAllocation accepts a valid three-box split and Box 3 untouched by default', () => {
+  // W18: Box 3 empty = plain 2-box allocation stays valid
+  assert.deepEqual(validateBoxAllocation(
+    { box1: '12.5', box1Qty: '20', box2: '8', box2Qty: '19', box3: '', box3Qty: '' }, 39, 'Pack'
+  ), {})
+  // happy 3-box split: 12 + 7 + 1 = 20 Pack
+  assert.deepEqual(validateBoxAllocation(
+    { box1: '12.5', box1Qty: '12', box2: '8', box2Qty: '7', box3: '2', box3Qty: '1' }, 20, 'Pack'
+  ), {})
+})
+
 test('validateBoxAllocation rejects half-filled Box 2 and below/above unit totals', () => {
   assert.ok(validateBoxAllocation(
     { box1: '12.5', box1Qty: '38', box2: '8', box2Qty: '0' }, 39, 'Pack'
@@ -58,6 +69,34 @@ test('validateBoxAllocation rejects half-filled Box 2 and below/above unit total
   )
 })
 
+test('validateBoxAllocation applies the Box 2 all-or-nothing rule to Box 3 (W18)', () => {
+  // half-filled Box 3: kg without count, and count without kg
+  assert.ok(validateBoxAllocation(
+    { box1: '12.5', box1Qty: '12', box2: '8', box2Qty: '8', box3: '2', box3Qty: '0' }, 20, 'Pack'
+  ).box3)
+  assert.ok(validateBoxAllocation(
+    { box1: '12.5', box1Qty: '12', box2: '8', box2Qty: '8', box3: '0', box3Qty: '3' }, 20, 'Pack'
+  ).box3)
+  // negative Box 3 kg flagged client-side
+  assert.match(
+    validateBoxAllocation(
+      { box1: '12.5', box1Qty: '20', box2: '0', box2Qty: '0', box3: '-3', box3Qty: '0' }, 20, 'Pack'
+    ).box3,
+    /non-negatif/
+  )
+  // fractional Box 3 count flagged
+  assert.ok(validateBoxAllocation(
+    { box1: '12.5', box1Qty: '12', box2: '8', box2Qty: '8', box3: '2', box3Qty: '1.5' }, 20, 'Pack'
+  ).box3Qty)
+  // the sum now spans three boxes
+  assert.match(
+    validateBoxAllocation(
+      { box1: '12.5', box1Qty: '12', box2: '8', box2Qty: '8', box3: '2', box3Qty: '2' }, 20, 'Pack'
+    ).total,
+    /Box 1 \+ Box 2 \+ Box 3 \(22\) harus tepat 20 Pack/
+  )
+})
+
 test('boxAllocationText renders kg + the row unit per box, kg-only pre-cutover, empty', () => {
   assert.equal(
     boxAllocationText({ box1: 12.5, box1Qty: 20, box2: 8, box2Qty: 19, unit: 'Pack' }),
@@ -72,6 +111,24 @@ test('boxAllocationText renders kg + the row unit per box, kg-only pre-cutover, 
     'Box 1: 12.5 kg'
   )
   assert.equal(boxAllocationText({ box1: null, box1Qty: null, box2: null, box2Qty: null }), '')
+})
+
+test('boxAllocationText renders Box 3 (W18) and skips empty middle/last boxes', () => {
+  assert.equal(
+    boxAllocationText({ box1: 12.5, box1Qty: 12, box2: 8, box2Qty: 7, box3: 2, box3Qty: 1, unit: 'Pack' }),
+    'Box 1: 12.5 kg · 12 Pack\nBox 2: 8 kg · 7 Pack\nBox 3: 2 kg · 1 Pack'
+  )
+  // an empty Box 2 with a kg-only Box 3 (count never invented) keeps the
+  // honest Box numbering
+  assert.equal(
+    boxAllocationText({ box1: 12.5, box1Qty: 20, box2: null, box2Qty: null, box3: 2, box3Qty: null, unit: 'Pack' }),
+    'Box 1: 12.5 kg · 20 Pack\nBox 3: 2 kg'
+  )
+  // rows mapped before box 3 existed (undefined) stay two-box
+  assert.equal(
+    boxAllocationText({ box1: 12.5, box1Qty: 20, box2: 8, box2Qty: 19, unit: 'Pack' }),
+    'Box 1: 12.5 kg · 20 Pack\nBox 2: 8 kg · 19 Pack'
+  )
 })
 
 test('expectedUnits uses the server integral tolerance (passed/default precision)', () => {

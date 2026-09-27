@@ -60,7 +60,7 @@ WORKSPACE_FIELDS = [
 	_field("custom_leader_produksi", "Leader Produksi", "Data", "custom_jumlah_kru", allow_on_submit=1),
 	# T35 three-lane handover summary — server-owned (read-only) state written
 	# atomically behind the Work Order lock by api/handover.py; Box 1 must be
-	# positive, Box 2 is 0/0 or positive/positive, counts are whole Ints in the
+	# positive, Box 2/3 are 0/0 or positive/positive, counts are whole Ints in the
 	# item's warehouse display UOM (T39 universal: Pack, Pcs, ... — label and
 	# fieldname stay unit-free; migrate_box_qty_rename moves the old _pack
 	# columns onto these _qty fields).
@@ -85,8 +85,18 @@ WORKSPACE_FIELDS = [
 		description="Jumlah Box 2 dalam satuan gudang item (Pack/Pcs/dll.) untuk request serah terima aktif/terakhir",
 	),
 	_field(
+		"custom_box_3", "Box 3 (kg)", "Float", "custom_box_2_qty",
+		allow_on_submit=1, read_only=1, non_negative=1,
+		description="Berat Box 3 (kg) untuk request serah terima aktif/terakhir",
+	),
+	_field(
+		"custom_box_3_qty", "Box 3 (Jumlah)", "Int", "custom_box_3",
+		allow_on_submit=1, read_only=1, non_negative=1,
+		description="Jumlah Box 3 dalam satuan gudang item (Pack/Pcs/dll.) untuk request serah terima aktif/terakhir",
+	),
+	_field(
 		"custom_handover_material_request", "Material Request Serah Terima", "Link",
-		"custom_box_2_qty", options="Material Request", allow_on_submit=1,
+		"custom_box_3_qty", options="Material Request", allow_on_submit=1,
 		read_only=1, print_hide=1,
 	),
 	_field("custom_prepacking_confirmed", "Pre-Packing Confirmed", "Check", "custom_handover_material_request", allow_on_submit=1, print_hide=1, description="Marker: prepacking block was deliberately saved/confirmed"),

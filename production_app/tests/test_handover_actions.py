@@ -293,7 +293,7 @@ class TestHandoverActions(IntegrationTestCase):
 		cls._manufacture(wo, qty)
 		return wo, cls._lot_in_cold(wo)
 
-	def _request(self, wo, box_1=10, box_1_qty=None, box_2=0, box_2_qty=0):
+	def _request(self, wo, box_1=10, box_1_qty=None, box_2=0, box_2_qty=0, box_3=0, box_3_qty=0):
 		"""create_request as the gudang actor (the matrix role), with a valid
 		one-box allocation by default (factor 5 fixtures)."""
 		if not flt(wo.produced_qty):
@@ -307,17 +307,20 @@ class TestHandoverActions(IntegrationTestCase):
 				box_1_qty=packs,
 				box_2=box_2,
 				box_2_qty=box_2_qty,
+				box_3=box_3,
+				box_3_qty=box_3_qty,
 			)
 		finally:
 			frappe.set_user("Administrator")
 
 	def _summary(self, wo_name):
-		"""The controlled Work Order handover summary (all six fields)."""
+		"""The controlled Work Order handover summary (all eight fields)."""
 		return frappe.db.get_value(
 			"Work Order", wo_name,
 			[
 				"custom_handover_material_request", "custom_handover_status",
 				"custom_box_1", "custom_box_1_qty", "custom_box_2", "custom_box_2_qty",
+				"custom_box_3", "custom_box_3_qty",
 			],
 			as_dict=True,
 		)
@@ -688,6 +691,8 @@ class TestHandoverActions(IntegrationTestCase):
 				"custom_box_1_qty": 15,
 				"custom_box_2": 3.0,
 				"custom_box_2_qty": 7,
+				"custom_box_3": 0.0,
+				"custom_box_3_qty": 0,
 			},
 		)
 		# a wrong Pcs sum is a zero-write rejection in the item's own unit
@@ -750,6 +755,56 @@ class TestHandoverActions(IntegrationTestCase):
 		self._assert_zero_write_rejection(
 			wo, dict(box_1=10, box_1_qty=20, box_2=1e308, box_2_qty=1), "maksimal"
 		)
+		self._assert_zero_write_rejection(
+			wo, dict(box_1=10, box_1_qty=20, box_3=1e308, box_3_qty=1), "maksimal"
+		)
+
+	def test_w18_box3_split_lands_on_summary_and_rejects_malformed(self):
+		"""W18 Box 3 (mirror of Box 2): a valid THREE-box split (sum 12+7+1=20
+		Pack) lands atomically on the Work Order summary incl. custom_box_3/qty
+		and mirrors onto the board row; a half-filled Box 3, a negative one and
+		a wrong three-box sum are zero-write rejections; a plain 2-box call
+		(back-compat) leaves custom_box_3/qty at 0."""
+		# (b) half-filled Box 3 (either half) -> zero writes (clean WO)
+		wo, _ = self._lot_ready(100)  # expected 20 Pack (factor 5)
+		self._assert_zero_write_rejection(
+			wo, dict(box_1=12.5, box_1_qty=20, box_3=5, box_3_qty=0), "Box 3"
+		)
+		self._assert_zero_write_rejection(
+			wo, dict(box_1=12.5, box_1_qty=20, box_3=0, box_3_qty=5), "Box 3"
+		)
+
+		# (c) negative Box 3 -> zero writes
+		self._assert_zero_write_rejection(
+			wo, dict(box_1=12.5, box_1_qty=20, box_3=-1, box_3_qty=-1), "kg"
+		)
+
+		# three-box sum mismatch names all boxes (fg fixture counts in Pack)
+		self._assert_zero_write_rejection(
+			wo, dict(box_1=12.5, box_1_qty=12, box_2=8, box_2_qty=7, box_3=2, box_3_qty=2),
+			"Box 1 + Box 2 + Box 3 (21) harus tepat 20 Pack",
+		)
+
+		# (a) happy 3-box split
+		wo2, _ = self._lot_ready(100)
+		result = self._request(wo2, box_1=12.5, box_1_qty=12, box_2=8, box_2_qty=7, box_3=2, box_3_qty=1)
+		self.assertEqual(result["expected_unit_count"], 20)
+		self.assertEqual((result["box_3"], result["box_3_qty"]), (2, 1))
+		summary = self._summary(wo2.name)
+		self.assertEqual(summary.custom_handover_material_request, result["material_request"])
+		self.assertEqual((flt(summary.custom_box_3), summary.custom_box_3_qty), (2, 1))
+		self.assertEqual(summary.custom_handover_status, "Diminta Gudang")
+		row = self._req(result["board"], result["material_request"])
+		self.assertEqual((row["box_3"], row["box_3_qty"]), (2, 1))
+		self.assertEqual(row["boxes"], [12.5, 8, 2])  # all three kgs listed
+
+		# (d) backward-compat: a plain 2-box call writes Box 3 as 0/0
+		wo3, _ = self._lot_ready(60)
+		result2 = self._request(wo3)  # default 10 kg / 12 Packs, no Box 3 payload
+		summary2 = self._summary(wo3.name)
+		self.assertEqual(summary2.custom_handover_material_request, result2["material_request"])
+		self.assertEqual((flt(summary2.custom_box_2), summary2.custom_box_2_qty), (0, 0))
+		self.assertEqual((flt(summary2.custom_box_3), summary2.custom_box_3_qty), (0, 0))
 
 	def test_t35_create_request_writes_wo_summary_atomically(self):
 		"""Valid two-box and one-box allocations land atomically on the Work

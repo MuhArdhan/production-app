@@ -48,7 +48,7 @@ export function unitLabel(lot) {
 }
 
 // Mirror of handover._validate_box_allocation: Box 1 kg + count positive;
-// Box 2 exactly 0/0 or positive/positive; the count sum must equal `expected`
+// Box 2/3 exactly 0/0 or positive/positive; the count sum must equal `expected`
 // exactly. Returns field-keyed error strings ('' -> untouched, invalid text
 // -> rejected); expected=null (invalid conversion) skips only the sum check.
 export function validateBoxAllocation(form, expected, unit = 'Pack') {
@@ -63,24 +63,29 @@ export function validateBoxAllocation(form, expected, unit = 'Pack') {
   const qtys1 = num(form.box1Qty)
   const kg2 = num(form.box2)
   const qtys2 = num(form.box2Qty)
+  const kg3 = num(form.box3)
+  const qtys3 = num(form.box3Qty)
   if (kg1 == null || kg1 <= 0) errors.box1 = 'Box 1: berat kg wajib diisi dan positif.'
   if (qtys1 == null || qtys1 <= 0 || !Number.isInteger(qtys1))
     errors.box1Qty = `Box 1: jumlah ${unit} wajib bilangan bulat positif.`
-  const kg2Filled = kg2 != null && kg2 > 0
-  const qtys2Filled = qtys2 != null && qtys2 > 0
-  if (kg2 != null && kg2 < 0)
-    errors.box2 = 'Box 2: berat kg harus angka non-negatif yang valid.'
-  else if (kg2Filled !== qtys2Filled)
-    errors.box2 = 'Box 2 harus kosong (0 kg / 0 jumlah) atau terisi keduanya.'
-  else if (qtys2Filled && !Number.isInteger(qtys2))
-    errors.box2Qty = `Box 2: jumlah ${unit} wajib bilangan bulat.`
+  for (const [n, kg, qtys] of [[2, kg2, qtys2], [3, kg3, qtys3]]) {
+    const kgFilled = kg != null && kg > 0
+    const qtysFilled = qtys != null && qtys > 0
+    if (kg != null && kg < 0)
+      errors[`box${n}`] = `Box ${n}: berat kg harus angka non-negatif yang valid.`
+    else if (kgFilled !== qtysFilled)
+      errors[`box${n}`] = `Box ${n} harus kosong (0 kg / 0 jumlah) atau terisi keduanya.`
+    else if (qtysFilled && !Number.isInteger(qtys))
+      errors[`box${n}Qty`] = `Box ${n}: jumlah ${unit} wajib bilangan bulat.`
+  }
   if (
     expected != null &&
     Number.isInteger(qtys1) && qtys1 > 0 &&
     (qtys2 == null || Number.isInteger(qtys2)) &&
-    qtys1 + (qtys2 ?? 0) !== expected
+    (qtys3 == null || Number.isInteger(qtys3)) &&
+    qtys1 + (qtys2 ?? 0) + (qtys3 ?? 0) !== expected
   )
-    errors.total = `Jumlah ${unit} Box 1 + Box 2 (${qtys1 + (qtys2 ?? 0)}) harus tepat ${expected} ${unit}.`
+    errors.total = `Jumlah ${unit} Box 1 + Box 2 + Box 3 (${qtys1 + (qtys2 ?? 0) + (qtys3 ?? 0)}) harus tepat ${expected} ${unit}.`
   return errors
 }
 
@@ -92,7 +97,9 @@ export function boxAllocationText(row) {
   if (!row) return ''
   const lines = []
   const unit = row.unit ? ` ${row.unit}` : ''
-  for (const [n, kg, qtys] of [[1, row.box1, row.box1Qty], [2, row.box2, row.box2Qty]]) {
+  for (const [n, kg, qtys] of [
+    [1, row.box1, row.box1Qty], [2, row.box2, row.box2Qty], [3, row.box3, row.box3Qty]
+  ]) {
     if (kg == null && qtys == null) continue
     const parts = [
       kg == null ? null : `${fmtNum(kg)} kg`,

@@ -271,6 +271,14 @@ class TestHandoverSetup(IntegrationTestCase):
 				df = meta.get_field(fieldname)
 				self.assertEqual(df.fieldtype, "Float", f"{doctype}.{fieldname}")
 				self.assertTrue(df.allow_on_submit, f"{doctype}.{fieldname}")
+		# W18: Box 3 exists ONLY on the Work Order summary — the MR hidden
+		# box fields stay 1/2 (pre-cutover fallback, deliberately not extended)
+		wo_box3 = wo_meta.get_field("custom_box_3")
+		self.assertIsNotNone(wo_box3)
+		self.assertEqual(wo_box3.fieldtype, "Float")
+		self.assertTrue(wo_box3.allow_on_submit)
+		self.assertTrue(wo_box3.non_negative)
+		self.assertIsNone(mr_meta.get_field("custom_box_3"))
 		self.assertEqual(
 			frappe.get_meta("Material Request").get_field("custom_box_1").allow_on_submit, 1
 		)
@@ -280,6 +288,7 @@ class TestHandoverSetup(IntegrationTestCase):
 			"custom_handover_material_request": ("Link", "Material Request"),
 			"custom_box_1_qty": ("Int", None),
 			"custom_box_2_qty": ("Int", None),
+			"custom_box_3_qty": ("Int", None),
 		}
 		for fieldname, (fieldtype, options) in expected.items():
 			df = wo_meta.get_field(fieldname)
@@ -293,6 +302,7 @@ class TestHandoverSetup(IntegrationTestCase):
 			self.assertIsNone(wo_meta.get_field(fieldname))
 		self.assertEqual(wo_meta.get_field("custom_box_1_qty").label, "Box 1 (Jumlah)")
 		self.assertEqual(wo_meta.get_field("custom_box_2_qty").label, "Box 2 (Jumlah)")
+		self.assertEqual(wo_meta.get_field("custom_box_3_qty").label, "Box 3 (Jumlah)")
 		# and the rename migration itself converges on the second apply
 		entries = (
 			r2["box_qty_rename"].values()
@@ -304,7 +314,7 @@ class TestHandoverSetup(IntegrationTestCase):
 			f"box_qty_rename not idempotent: {r2['box_qty_rename']}",
 		)
 
-		for fieldname in ("custom_box_1", "custom_box_2"):
+		for fieldname in ("custom_box_1", "custom_box_2", "custom_box_3"):
 			self.assertTrue(wo_meta.get_field(fieldname).read_only)
 
 		self.assertEqual(
