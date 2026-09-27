@@ -62,6 +62,17 @@ const navOpen = ref(false)
 const userMenu = ref(false)
 const errorDialog = ref(null)
 const labelPrintDialog = ref(null)
+const labelPrintFrame = ref(null)
+const printJob = ref(null)
+const extraLabelCount = ref(0)
+const labelCountValid = computed(() =>
+  extraLabelCount.value !== '' &&
+  Number.isInteger(Number(extraLabelCount.value)) &&
+  Number(extraLabelCount.value) >= 0 &&
+  labelPrintPrompt.labelCount + Number(extraLabelCount.value) <= 10000
+)
+const totalLabelCount = computed(() => labelPrintPrompt.labelCount + Number(extraLabelCount.value || 0))
+let printJobSequence = 0
 const errorClose = ref(null)
 const currentUser = window.workspace_user || 'Pengguna ERPNext'
 const initials = currentUser.split(' ').slice(0, 2).map(s => s[0]).join('')
@@ -88,6 +99,7 @@ watch(() => state.actionError, error => {
 
 watch(() => labelPrintPrompt.workOrder, workOrder => {
   if (!workOrder) return
+  extraLabelCount.value = 0
   nextTick(() => {
     if (!labelPrintDialog.value?.open) labelPrintDialog.value?.showModal()
   })
@@ -95,13 +107,46 @@ watch(() => labelPrintPrompt.workOrder, workOrder => {
 
 function closeLabelPrint() {
   if (labelPrintDialog.value?.open) labelPrintDialog.value.close()
+  extraLabelCount.value = 0
   labelPrintPrompt.workOrder = ''
   labelPrintPrompt.labelCount = 0
+  labelPrintPrompt.afterSave = false
 }
 
 function confirmLabelPrint() {
-  // Let the anchor open its current href before clearing the reactive Work Order.
-  window.setTimeout(closeLabelPrint, 0)
+  const workOrder = labelPrintPrompt.workOrder
+  if (!workOrder || !labelCountValid.value) return
+  printJob.value = {
+    key: ++printJobSequence,
+    url: workOrderLabelUrl(workOrder, Number(extraLabelCount.value)) + '&embedded=1'
+  }
+  closeLabelPrint()
+}
+
+function onLabelFrameLoad() {
+  const frameWindow = labelPrintFrame.value?.contentWindow
+  if (!frameWindow?.workOrderLabelReady) {
+    state.actionError = {
+      title: 'Cetak Label Gagal',
+      message: 'Halaman label tidak dapat dimuat. Buka kembali Work Order lalu coba cetak lagi.',
+      details: [],
+      hint: ''
+    }
+    printJob.value = null
+    return
+  }
+  try {
+    frameWindow.focus()
+    frameWindow.print()
+  } catch (_) {
+    state.actionError = {
+      title: 'Cetak Label Gagal',
+      message: 'Browser tidak dapat membuka dialog printer. Periksa izin cetak pada browser.',
+      details: [],
+      hint: ''
+    }
+    printJob.value = null
+  }
 }
 
 function closeError() {
@@ -291,13 +336,30 @@ function onNavClick() {
     </div>
 
     <dialog ref="labelPrintDialog" class="dialog" aria-labelledby="label-print-title" @cancel.prevent="closeLabelPrint" @click.self="closeLabelPrint">
-      <h3 id="label-print-title">Pre-Packing tersimpan</h3>
-      <p>Cetak {{ labelPrintPrompt.labelCount }} label untuk Work Order <strong>{{ labelPrintPrompt.workOrder }}</strong>?</p>
+      <h3 id="label-print-title">{{ labelPrintPrompt.afterSave ? 'Pre-Packing tersimpan' : 'Cetak label?' }}</h3>
+      <p>Cetak label untuk Work Order <strong>{{ labelPrintPrompt.workOrder }}</strong>?</p>
+      <p>Label sesuai Good Qty: {{ labelPrintPrompt.labelCount }}</p>
+      <label for="extra-label-count">Label tambahan</label>
+      <input id="extra-label-count" v-model.number="extraLabelCount" type="number" min="0" :max="Math.max(0, 10000 - labelPrintPrompt.labelCount)" step="1" inputmode="numeric" class="input" style="display: block; width: 100%; margin-top: 6px">
+      <p v-if="labelCountValid">Total cetak: <strong>{{ totalLabelCount }} label</strong></p>
+      <p v-else style="color: #b3261e">Masukkan bilangan bulat 0 atau lebih; maksimal 10.000 label per cetakan.</p>
       <div class="dlg-actions">
         <button class="btn" @click="closeLabelPrint">Nanti saja</button>
-        <a class="btn btn-primary" :href="workOrderLabelUrl(labelPrintPrompt.workOrder)" target="_blank" rel="noopener noreferrer" @click="confirmLabelPrint">Ya, Cetak Label</a>
+        <button class="btn btn-primary" :disabled="!labelCountValid" @click="confirmLabelPrint">Ya, Cetak Label</button>
       </div>
     </dialog>
+
+    <iframe
+      v-if="printJob"
+      :key="printJob.key"
+      ref="labelPrintFrame"
+      :src="printJob.url"
+      title="Dokumen cetak label"
+      aria-hidden="true"
+      tabindex="-1"
+      style="position: fixed; left: -10000px; top: 0; width: 1px; height: 1px; border: 0"
+      @load="onLabelFrameLoad"
+    ></iframe>
 
     <dialog ref="errorDialog" class="dialog error-dialog" aria-labelledby="error-dialog-title" @cancel.prevent="closeError" @click.self="closeError">
       <div class="error-dialog-icon" aria-hidden="true">!</div>

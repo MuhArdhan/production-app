@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { getWo, workOrders, STAGE_LABELS, openWo, state, uiTopLoading, producedQty, HANDOVER_LABELS } from './store.js'
 import { fmtDate, qtyMain, qtyStack } from './format.js'
 import { ChevronLeft, Check, CheckCircle2, Printer } from 'lucide-vue-next'
-import { workOrderLabelUrl } from './work-order-label.js'
+import { labelCountForWorkOrder, offerLabelPrint } from './label-print-prompt.js'
 import StagePersiapan from './stages/StagePersiapan.vue'
 import StageMaterial from './stages/StageMaterial.vue'
 import StageOperasi from './stages/StageOperasi.vue'
@@ -174,9 +174,9 @@ onMounted(() => {
     </nav>
 
     <div v-if="wo.prepacking?.confirmed" class="toolbar ws-label-actions">
-      <a class="btn ws-label-print" :href="workOrderLabelUrl(wo.id)" target="_blank" rel="noopener noreferrer">
+      <button class="btn ws-label-print" type="button" @click="offerLabelPrint(wo.id, labelCountForWorkOrder(wo))">
         <Printer :size="14" :stroke-width="2" /> Cetak Label
-      </a>
+      </button>
     </div>
 
     <p v-if="wo.uomWarning" class="callout">{{ wo.uomWarning }}</p>
