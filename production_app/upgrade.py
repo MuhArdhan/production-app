@@ -111,6 +111,13 @@ ITEM_FIELDS = [
 	_field("custom_default_fg_warehouse", "Default FG Warehouse", "Link", "custom_default_wip_warehouse", options="Warehouse"),
 ]
 
+# FU62: nama tampilan BOM untuk wizard "Tambah Item" Production Plan
+# (api/production_plan.py). Spec sengaja sama dengan field liar yang sudah ada
+# di site lama (label/anchor/in_list_view) supaya upsert konvergen "unchanged".
+BOM_FIELDS = [
+	_field("custom_bom_name", "BOM Name", "Data", "final_product_section", in_list_view=1),
+]
+
 # FU30: the manual "Gudang Confirmed" checkbox is retired — Status Serah Terima
 # plus the stock-based drop rule are the single source of truth. The field is
 # deleted from the site by apply() (0 rows ticked at retirement = lossless).
@@ -214,7 +221,7 @@ def _upsert_field(dt, spec):
 
 def ensure_app_fields(create_only=False):
 	out = []
-	for doctype, specs in ((DOCTYPE, WORKSPACE_FIELDS), ("Item", ITEM_FIELDS)):
+	for doctype, specs in ((DOCTYPE, WORKSPACE_FIELDS), ("Item", ITEM_FIELDS), ("BOM", BOM_FIELDS)):
 		for spec in specs:
 			existing = frappe.db.get_value(
 				"Custom Field", {"dt": doctype, "fieldname": spec["fieldname"]}, "name"
