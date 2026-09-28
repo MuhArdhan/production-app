@@ -1360,6 +1360,11 @@ def apply():
 	if not os.path.exists(POSTPACKING_SNAPSHOT):
 		snapshot_t27()  # never change postpacking metadata without a pre-state
 	result = {"fields": ensure_app_fields(create_only=True), "leader": "unchanged"}
+	# Fresh installs: the MR/MR Item custom fields (incl. custom_work_order)
+	# must exist BEFORE any step reads those columns — the three-lane resync
+	# plucks Material Request Item rows by custom_work_order. Pre-existing
+	# sites already have the columns, so hoisting this is a no-op there.
+	result["handover_mr_fields"] = ensure_handover_mr_fields()
 	if not os.path.exists(NAME_TEXT_SNAPSHOT):
 		snapshot_fu10()  # fields now exist; preserve any legacy values before conversion
 	if not os.path.exists(QC_PACKING_TEXT_SNAPSHOT):
@@ -1408,7 +1413,6 @@ def apply():
 	result["stock_user_batch_read"] = ensure_stock_user_batch_read()
 	result["warehouse_default_fields"] = ensure_warehouse_default_fields()
 	result["retire_company_field"] = retire_company_field()
-	result["handover_mr_fields"] = ensure_handover_mr_fields()
 	if not os.path.exists(MR_DELETE_SNAPSHOT):
 		snapshot_mr_delete_perm()  # never change the delete perm without a pre-state
 	result["handover_permissions"] = ensure_handover_permissions()
