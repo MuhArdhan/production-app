@@ -485,7 +485,7 @@ export const lotAvailablePcs = (lot) => lot?.availableQty
 // batal/draf); setelah tiap aksi, daftar diganti dari respons server.
 // ============================================================================
 
-export const formOrderState = reactive({ loading: false, error: null, loaded: false, pending: null })
+export const formOrderState = reactive({ loading: false, error: null, loaded: false, pending: null, attachmentIssue: null })
 export const formOrders = reactive([])
 
 function mapFormOrder(o) {
@@ -540,13 +540,93 @@ async function formOrderAction(method, args) {
 export function foItemInfo(itemCode) {
   return call('production_app.api.form_order.item_info', { item_code: itemCode })
 }
-export function createFormOrder(rows, scheduleDate, note) {
-  return formOrderAction('create_form_order', {
-    // FU48c: satuan terpilih per baris (kosong → server pakai stock_uom)
-    items: rows.map((r) => ({ item_code: r.code, qty: Number(r.qty), uom: r.uom || null })),
-    schedule_date: scheduleDate || null,
-    note: note || null
+async function uploadNativeAttachment(file, doctype, docname) {
+  const form = new FormData()
+  form.append('file', file, file.name)
+  form.append('doctype', doctype)
+  form.append('docname', docname)
+  form.append('folder', 'Home/Attachments')
+  form.append('is_private', '1')
+
+  const response = await fetch('/api/method/upload_file', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'X-Frappe-CSRF-Token': window.csrf_token || ''
+    },
+    body: form
   })
+  let data = {}
+  try { data = await response.json() } catch { /* non-JSON server error */ }
+  if (!response.ok || data.exc) {
+    let message = data.message || response.statusText || 'Unggah lampiran gagal.'
+    try {
+      const messages = JSON.parse(data._server_messages || '[]')
+        .map((entry) => JSON.parse(entry).message)
+        .filter(Boolean)
+      if (messages.length) message = messages.join(' ')
+    } catch { /* keep the ordinary response message */ }
+    throw new Error(decodeErrorText(message) || 'Unggah lampiran gagal.')
+  }
+  return data.message
+}
+
+async function uploadFormOrderAttachments(issue) {
+  while (issue.files.length) {
+    const file = issue.files[0]
+    try {
+      await uploadNativeAttachment(file, 'Material Request', issue.materialRequest)
+    } catch (error) {
+      issue.message = `Gagal mengunggah ${file.name}: ${error.message}`
+      throw new Error(issue.message)
+    }
+    // Keep only files that have not been uploaded; retry must not duplicate earlier files.
+    issue.files.shift()
+  }
+}
+
+export async function createFormOrder(rows, scheduleDate, note, attachments = []) {
+  if (formOrderState.pending) throw new Error('Form Order sedang diproses.')
+  formOrderState.pending = 'create_form_order'
+  try {
+    const result = await call('production_app.api.form_order.create_form_order', {
+      // FU48c: satuan terpilih per baris (kosong → server pakai stock_uom)
+      items: rows.map((r) => ({ item_code: r.code, qty: Number(r.qty), uom: r.uom || null })),
+      schedule_date: scheduleDate || null,
+      note: note || null
+    })
+    applyFormOrders(result.orders)
+
+    if (attachments.length) {
+      const issue = { materialRequest: result.material_request, files: [...attachments], message: '' }
+      formOrderState.pending = 'attach_form_order'
+      try {
+        await uploadFormOrderAttachments(issue)
+      } catch (error) {
+        // The MR already exists. Keep only files still waiting for upload.
+        formOrderState.attachmentIssue = issue
+        return { ...result, attachment_error: error.message }
+      }
+    }
+    return result
+  } finally {
+    formOrderState.pending = null
+  }
+}
+
+export async function retryFormOrderAttachment() {
+  const issue = formOrderState.attachmentIssue
+  if (!issue?.files?.length || !issue.materialRequest) throw new Error('Lampiran Form Order tidak tersedia untuk diunggah ulang.')
+  if (formOrderState.pending) throw new Error('Unggah lampiran sedang diproses.')
+  formOrderState.pending = 'attach_form_order'
+  try {
+    const count = issue.files.length
+    await uploadFormOrderAttachments(issue)
+    formOrderState.attachmentIssue = null
+    return count
+  } finally {
+    formOrderState.pending = null
+  }
 }
 export function cancelFormOrder(materialRequest) {
   return formOrderAction('cancel_form_order', { material_request: materialRequest })

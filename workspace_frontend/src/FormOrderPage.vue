@@ -5,7 +5,7 @@
 // formOrderState.justSaved dan dibaca di sini saat mount.
 import { nextTick, onMounted, ref } from 'vue'
 import { Inbox, Plus } from 'lucide-vue-next'
-import { cancelFormOrder, formOrders, formOrderState, loadFormOrders, uiTopLoading } from './store.js'
+import { cancelFormOrder, formOrders, formOrderState, loadFormOrders, retryFormOrderAttachment, uiTopLoading } from './store.js'
 import { foItemsText, foStatusMeta } from './form-order.js'
 
 const savedMsg = ref('')
@@ -38,6 +38,14 @@ async function confirmCancel() {
   }
 }
 
+async function retryAttachment() {
+  const issue = formOrderState.attachmentIssue
+  try {
+    const uploaded = await retryFormOrderAttachment()
+    savedMsg.value = `${uploaded} lampiran berhasil ditambahkan ke ${issue.materialRequest}.`
+  } catch { /* pesan rinci tetap tersimpan pada attachmentIssue */ }
+}
+
 onMounted(async () => {
   if (formOrderState.justSaved) {
     savedMsg.value = formOrderState.justSaved
@@ -64,6 +72,17 @@ onMounted(async () => {
   </div>
 
   <div v-if="formOrderState.error" class="appfoot" style="color:#b3261e">Gagal memuat: {{ formOrderState.error }} — <a href="#" @click.prevent="loadFormOrders()">coba lagi</a></div>
+
+  <div v-if="formOrderState.attachmentIssue" class="callout bad fo-attachment-warning" role="alert">
+    <div>
+      <strong>{{ formOrderState.attachmentIssue.materialRequest }} sudah dibuat, tetapi {{ formOrderState.attachmentIssue.files.length }} lampiran masih menunggu unggah.</strong>
+      <p>{{ formOrderState.attachmentIssue.message }}</p>
+      <a :href="'/app/material-request/' + encodeURIComponent(formOrderState.attachmentIssue.materialRequest)" target="_blank" rel="noopener noreferrer">Buka Material Request di ERPNext</a>
+    </div>
+    <button class="btn btn-sm" :disabled="!!formOrderState.pending" @click="retryAttachment">
+      {{ formOrderState.pending === 'attach_form_order' ? 'Mengunggah…' : 'Ulangi Unggah Lampiran' }}
+    </button>
+  </div>
 
   <!-- FU52: tombol menavigasi ke halaman buat (bukan panel toggle) -->
   <div class="toolbar fo-actions">

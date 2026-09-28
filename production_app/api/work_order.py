@@ -551,26 +551,15 @@ SETTING_WAREHOUSE_FIELDS = {
 # sini sebagai pertahanan ganda terhadap data legacy).
 WO_TERMINAL_STATUSES = ("Completed", "Stopped", "Closed", "Cancelled")
 
-# FU61: scope company (FU58) DIPENSIUNKAN atas permintaan user 22 Sep — site
-# satu-company, gate hanya menambah kelas insiden tanpa manfaat. Field lama
-# dipensiunkan idempoten (dihapus bila ada).
-RETIRED_COMPANY_FIELD = "custom_default_company"
-
-
 def _ensure_settings_fields():
-	"""FU60/FU61: konvergensi field default gudang di titik baca sentral.
-	Pasang yang kurang (update kode tanpa migrate pernah mematikan seluruh
-	bacaan settings di v16) dan pensiunkan field company FU61 bila masih ada.
-	Sentinel = field terakhir paket (dibuat paling akhir oleh ensure)."""
+	"""Ensure warehouse defaults exist before reading Manufacturing Settings.
+	The retired company field is cleaned up only during install or migrate.
+	Sentinel = last field created by ensure_warehouse_default_fields()."""
 	meta = frappe.get_meta("Manufacturing Settings")
 	if meta.get_field("custom_default_form_order_target_warehouse"):
-		if meta.get_field(RETIRED_COMPANY_FIELD):
-			from production_app.upgrade import retire_company_field
-			retire_company_field()
 		return
-	from production_app.upgrade import ensure_warehouse_default_fields, retire_company_field
+	from production_app.upgrade import ensure_warehouse_default_fields
 	ensure_warehouse_default_fields()
-	retire_company_field()
 
 
 def _warehouse_defaults():

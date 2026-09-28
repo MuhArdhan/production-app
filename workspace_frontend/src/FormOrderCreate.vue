@@ -5,10 +5,10 @@
 // ber-nama MR disimpan di formOrderState (dibaca halaman riwayat).
 // Isi form dipindah apa adanya dari FormOrderPage (FU48c: dropdown Satuan,
 // default satuan terakhir user; validasi server tetap otoritatif).
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ArrowLeft, ClipboardList, Plus, Trash2 } from 'lucide-vue-next'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { ArrowLeft, Camera, ClipboardList, Paperclip, Plus, Trash2 } from 'lucide-vue-next'
 import LinkInput from './LinkInput.vue'
-import { createFormOrder, foItemInfo, formOrders, formOrderState, loadFormOrders } from './store.js'
+import { createFormOrder, foItemInfo, formOrders, formOrderState, loadFormOrders, retryFormOrderAttachment } from './store.js'
 import { defaultUom, formCanSubmit, itemRowProblem, ITEM_PROBLEM_TEXT, uomOptions, uomProblem, validateFormRows } from './form-order.js'
 
 const tomorrow = () => {
@@ -21,6 +21,18 @@ const rows = reactive([{ code: '', qty: '', info: null, infoFor: '', uom: '' }])
 const scheduleDate = ref(tomorrow())
 const note = ref('')
 const error = ref('')
+const attachments = ref([])
+const attachmentInput = ref(null)
+const cameraInput = ref(null)
+const cameraDialog = ref(null)
+const cameraVideo = ref(null)
+const cameraReady = ref(false)
+const cameraCapturing = ref(false)
+const cameraError = ref('')
+let cameraStream = null
+let cameraRequest = 0
+const createdRequest = ref('')
+const attachmentError = ref('')
 
 // ambil info item (satuan/nama) saat kode terpilih; ber-batch/non-stok
 // mendapat peringatan dini di barisnya — validasi server tetap otoritatif.
@@ -53,6 +65,7 @@ const canSubmit = computed(() =>
   formCanSubmit(rows, rowErrors.value)
   && !rowProblems.value.some(Boolean)
   && !!scheduleDate.value
+  && !createdRequest.value
   && !formOrderState.pending
 )
 
@@ -64,6 +77,118 @@ function removeRow(i) {
 }
 function goBack() {
   window.location.hash = '#/form-order'
+}
+
+function addAttachments(files) {
+  const added = Array.from(files || [])
+  if (!added.length) return
+  attachments.value.push(...added)
+  if (createdRequest.value && formOrderState.attachmentIssue) {
+    formOrderState.attachmentIssue.files.push(...added)
+  }
+}
+
+function chooseAttachment(event) {
+  addAttachments(event.target.files)
+  // Let the same file or photo be selected again after clearing it.
+  event.target.value = ''
+}
+
+function isPendingAttachment(file) {
+  return formOrderState.attachmentIssue?.files.includes(file)
+}
+
+function removeAttachment(index) {
+  const file = attachments.value[index]
+  if (createdRequest.value) {
+    const issue = formOrderState.attachmentIssue
+    const pendingIndex = issue?.files.indexOf(file) ?? -1
+    if (pendingIndex < 0) return // Already uploaded to the Material Request.
+    issue.files.splice(pendingIndex, 1)
+    if (issue.files.length) {
+      issue.message = 'Lampiran yang tersisa belum diunggah.'
+      attachmentError.value = issue.message
+    }
+  }
+  attachments.value.splice(index, 1)
+  if (createdRequest.value && !formOrderState.attachmentIssue.files.length) {
+    formOrderState.attachmentIssue = null
+    finishCreated(createdRequest.value)
+  }
+}
+
+function stopCamera() {
+  cameraRequest += 1
+  cameraStream?.getTracks().forEach((track) => track.stop())
+  cameraStream = null
+  if (cameraVideo.value) cameraVideo.value.srcObject = null
+  cameraReady.value = false
+}
+
+function closeCamera() {
+  stopCamera()
+  cameraDialog.value?.close()
+}
+
+async function openCamera() {
+  if (formOrderState.pending) return
+  // On phones, use the same native camera picker as Frappe's attachment UI.
+  if (window.matchMedia('(pointer: coarse)').matches || !navigator.mediaDevices?.getUserMedia) {
+    cameraInput.value?.click()
+    return
+  }
+  cameraError.value = ''
+  cameraReady.value = false
+  cameraDialog.value?.showModal()
+  const request = ++cameraRequest
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+    if (request !== cameraRequest || !cameraDialog.value?.open) {
+      stream.getTracks().forEach((track) => track.stop())
+      return
+    }
+    cameraStream = stream
+    cameraVideo.value.srcObject = stream
+    await cameraVideo.value.play()
+    if (request === cameraRequest) cameraReady.value = true
+  } catch (error) {
+    if (request !== cameraRequest) return
+    stopCamera()
+    cameraError.value = error?.name === 'NotAllowedError'
+      ? 'Izin kamera ditolak. Izinkan akses kamera di browser, lalu coba lagi.'
+      : 'Kamera tidak tersedia. Anda dapat memilih foto dari perangkat.'
+  }
+}
+
+async function capturePhoto() {
+  if (!cameraReady.value || cameraCapturing.value) return
+  cameraCapturing.value = true
+  cameraError.value = ''
+  try {
+    const video = cameraVideo.value
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const context = canvas.getContext('2d')
+    if (!context || !canvas.width || !canvas.height) throw new Error('Gambar kamera belum siap.')
+    context.drawImage(video, 0, 0)
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9))
+    if (!blob) throw new Error('Foto gagal disimpan.')
+    if (!cameraDialog.value?.open) return
+    addAttachments([new File([blob], `form-order-${Date.now()}.jpg`, { type: 'image/jpeg' })])
+    closeCamera()
+  } catch (error) {
+    cameraError.value = error.message || 'Foto gagal diambil.'
+  } finally {
+    cameraCapturing.value = false
+  }
+}
+
+onBeforeUnmount(stopCamera)
+
+function finishCreated(materialRequest) {
+  formOrderState.justSaved = materialRequest || ''
+  goBack()
 }
 
 // FU53: prefill dari MR Form Order TERAKHIR user — item sama (urutan MR),
@@ -87,13 +212,27 @@ async function submit() {
   if (!canSubmit.value) return
   error.value = ''
   try {
-    const res = await createFormOrder(rows, scheduleDate.value, note.value)
+    const res = await createFormOrder(rows, scheduleDate.value, note.value, attachments.value)
+    if (res?.attachment_error) {
+      createdRequest.value = res.material_request
+      attachmentError.value = res.attachment_error
+      return
+    }
     // sukses: daftar sudah diganti server truth — kembali ke riwayat dan
     // umumkan nama MR di sana (dibaca onMounted halaman riwayat)
-    formOrderState.justSaved = res?.material_request || ''
-    goBack()
+    finishCreated(res?.material_request)
   } catch (e) {
     error.value = e.message // seluruh isian dipertahankan (pola FU14)
+  }
+}
+
+async function retryAttachment() {
+  attachmentError.value = ''
+  try {
+    await retryFormOrderAttachment()
+    finishCreated(createdRequest.value)
+  } catch (e) {
+    attachmentError.value = e.message
   }
 }
 </script>
@@ -130,6 +269,69 @@ async function submit() {
           <label for="fo-note">Catatan</label>
           <input id="fo-note" v-model="note" class="input" type="text" maxlength="280" placeholder="Opsional" />
         </div>
+      </div>
+
+      <div class="field fo-attachment-field">
+        <label for="fo-attachment">Lampiran</label>
+        <div class="fo-attachment-control">
+          <label class="btn fo-attach-button" :class="{ disabled: !!formOrderState.pending }">
+            <Paperclip :size="14" :stroke-width="2" />
+            Attach
+            <input
+              id="fo-attachment"
+              ref="attachmentInput"
+              class="fo-attachment-native"
+              type="file"
+              multiple
+              aria-label="Pilih lampiran Form Order"
+              :disabled="!!formOrderState.pending"
+              @change="chooseAttachment"
+            />
+          </label>
+          <button type="button" class="btn" :disabled="!!formOrderState.pending" @click="openCamera">
+            <Camera :size="14" :stroke-width="2" />
+            Kamera
+          </button>
+          <input
+            ref="cameraInput"
+            class="fo-camera-native"
+            type="file"
+            accept="image/*"
+            capture="environment"
+            tabindex="-1"
+            aria-hidden="true"
+            :disabled="!!formOrderState.pending"
+            @change="chooseAttachment"
+          />
+        </div>
+        <span v-if="!attachments.length" class="hint fo-attachment-empty">Belum ada lampiran</span>
+        <ul v-else class="fo-attachment-list" aria-label="Lampiran dipilih">
+          <li v-for="(file, index) in attachments" :key="index" class="fo-attachment-item">
+            <Paperclip :size="14" :stroke-width="2" aria-hidden="true" />
+            <span class="fo-attachment-name" :title="file.name">{{ file.name }}</span>
+            <span v-if="createdRequest" class="hint fo-attachment-status">
+              {{ isPendingAttachment(file) ? 'Menunggu unggah' : 'Terunggah' }}
+            </span>
+            <button
+              v-if="!createdRequest || isPendingAttachment(file)"
+              type="button"
+              class="btn btn-sm"
+              :disabled="!!formOrderState.pending"
+              :aria-label="`Hapus lampiran ${file.name}`"
+              @click="removeAttachment(index)"
+            >Hapus</button>
+          </li>
+        </ul>
+        <p class="hint">Pilih beberapa file sekaligus atau tambahkan foto dari kamera. Semua lampiran akan tersimpan pada Material Request setelah Form Order dikirim.</p>
+      </div>
+
+      <div v-if="createdRequest && attachmentError" class="callout bad fo-attachment-warning" role="alert">
+        <div>
+          <strong>{{ createdRequest }} sudah dibuat, tetapi {{ formOrderState.attachmentIssue?.files.length }} lampiran masih menunggu unggah.</strong>
+          <p>{{ attachmentError }} Anda dapat menambah atau menghapus lampiran yang belum terunggah, lalu mengulang unggahan. Form Order tidak akan dibuat ulang.</p>
+          <a :href="'/app/material-request/' + encodeURIComponent(createdRequest)" target="_blank" rel="noopener noreferrer">Buka Material Request di ERPNext</a>
+        </div>
+        <button class="btn btn-sm" :disabled="!!formOrderState.pending" @click="retryAttachment">Ulangi Unggah Lampiran</button>
       </div>
 
       <!-- grid item ala child table ERPNext -->
@@ -194,11 +396,29 @@ async function submit() {
       </div>
 
       <p v-if="error" class="err" role="alert">{{ error }}</p>
-      <p v-if="formOrderState.pending === 'create_form_order'" role="status">Menyimpan…</p>
+      <p v-if="formOrderState.pending === 'create_form_order'" role="status">Menyimpan Form Order…</p>
+      <p v-else-if="formOrderState.pending === 'attach_form_order'" role="status">Mengunggah lampiran…</p>
       <div class="panel-foot" style="padding-left: 0">
         <button class="btn" :disabled="!!formOrderState.pending" @click="goBack">Batal</button>
-        <button class="btn btn-primary" :disabled="!canSubmit" @click="submit">Kirim Form Order</button>
+        <button v-if="createdRequest" class="btn btn-primary" :disabled="!!formOrderState.pending" @click="retryAttachment">Ulangi Unggah Lampiran</button>
+        <button v-else class="btn btn-primary" :disabled="!canSubmit" @click="submit">Kirim Form Order</button>
       </div>
     </div>
   </section>
+
+  <dialog ref="cameraDialog" class="dialog dialog-wide fo-camera-dialog" @cancel.prevent="closeCamera" @close="stopCamera">
+    <h3>Ambil Foto Lampiran</h3>
+    <div class="fo-camera-preview">
+      <video ref="cameraVideo" autoplay muted playsinline aria-label="Pratinjau kamera"></video>
+      <span v-if="!cameraReady && !cameraError" class="hint">Menyiapkan kamera…</span>
+    </div>
+    <p v-if="cameraError" class="err" role="alert">{{ cameraError }}</p>
+    <div class="dlg-actions">
+      <button type="button" class="btn" @click="closeCamera">Batal</button>
+      <button type="button" class="btn btn-primary" :disabled="!cameraReady || cameraCapturing" @click="capturePhoto">
+        <Camera :size="14" :stroke-width="2" />
+        {{ cameraCapturing ? 'Menyimpan…' : 'Ambil Foto' }}
+      </button>
+    </div>
+  </dialog>
 </template>
