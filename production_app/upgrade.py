@@ -105,7 +105,7 @@ WORKSPACE_FIELDS = [
 ]
 
 ITEM_FIELDS = [
-	_field("custom_default_uom_warehouse", "Default UOM", "Link", "stock_uom", options="UOM"),
+	_field("custom_default_uom_warehouse", "Default UOM", "Link", "stock_uom", options="UOM", hidden=1),
 	_field("custom_default_source_warehouse", "Default Source Warehouse", "Link", "custom_default_uom_warehouse", options="Warehouse"),
 	_field("custom_default_wip_warehouse", "Default WIP Warehouse", "Link", "custom_default_source_warehouse", options="Warehouse"),
 	_field("custom_default_fg_warehouse", "Default FG Warehouse", "Link", "custom_default_wip_warehouse", options="Warehouse"),

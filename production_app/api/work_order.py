@@ -290,7 +290,15 @@ def _enrich_units(rows):
 			items[code] = frappe.get_cached_doc("Item", code)
 		item = items[code]
 		stock = item.stock_uom
-		alternate = item.get("custom_default_uom_warehouse") or row.get("custom_uom") or stock
+		# W21: the gudang-owned "Default Inventory UOM" (warehouse_app) supersedes the
+		# legacy "Default UOM" field; item.get returns None on sites without the new
+		# field, so the fallback chain stays safe everywhere.
+		alternate = (
+			item.get("custom_default_inventory_unit_of_measure")
+			or item.get("custom_default_uom_warehouse")
+			or row.get("custom_uom")
+			or stock
+		)
 		factor = 1.0 if alternate == stock else None
 		if alternate != stock:
 			conversions = item.uoms
