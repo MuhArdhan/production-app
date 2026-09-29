@@ -438,7 +438,7 @@ def wo_detail(name):
 	for key, fieldname in SUGGESTION_FIELDS.items():
 		data[f"suggested_{key}"] = None
 	if data["suggestions_enabled"]:
-		previous = _previous_same_item(name, wo.production_item)
+		previous = _previous_same_item(name, wo.production_item, wo.company)
 		if previous:
 			for key, fieldname in SUGGESTION_FIELDS.items():
 				if not data.get(fieldname) and previous["values"].get(fieldname):
@@ -461,11 +461,14 @@ def _suggestions_enabled():
 	return cint(get_user_default(SUGGESTION_DEFAULT_KEY) or 1) == 1
 
 
-def _previous_same_item(name, production_item):
+def _previous_same_item(name, production_item, company):
+	# FU66: get_all melewati User Permission — scope company harus eksplisit
+	# agar saran (nama WO sumber + staf) tidak pernah lintas company.
 	rows = frappe.get_all(
 		DOCTYPE,
 		filters={
 			"production_item": production_item,
+			"company": company,
 			"name": ("!=", name),
 			"docstatus": ("<", 2),
 		},

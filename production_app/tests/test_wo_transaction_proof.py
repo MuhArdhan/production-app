@@ -1393,6 +1393,39 @@ class TestWorkOrderTransactionProof(IntegrationTestCase):
 		finally:
 			suggestion_preferences_save(1)
 
+	def test_fu66_suggestions_stay_within_work_order_company(self):
+		"""FU66: saran hanya boleh dari WO company yang sama. _previous_same_item
+		memakai get_all yang melewati User Permission, jadi scope company harus
+		difilter eksplisit — WO cross-company yang lebih baru tidak boleh menang
+		pada urutan creation desc dan menyodorkan nama staf company lain."""
+		from production_app.api.work_order import prepare, wo_detail
+
+		wo_src = self._make_wo(100, submit=False)
+		prepare(wo_src.name, values={
+			"penimbang": "Kru Juri", "leader": "Rina",
+		}, submit=1)
+		wo = self._make_wo(100, submit=True)
+		frappe.set_user("Administrator")
+
+		other_name = PREFIX + "CROSS-" + random_string(4).upper()
+		# fixture sengaja hanya mengisi custom_nama_penimbang: assertion penimbang
+		# + suggestion_sources-lah yang membedakan company; bila SUGGESTION_FIELDS
+		# bertambah, isi field baru di sini juga agar test tetap mendiskriminasi.
+		frappe.get_doc({
+			"doctype": "Work Order",
+			"name": other_name,
+			"production_item": self.fg,
+			"company": "PT Bukan Company Uji",
+			"docstatus": 1,
+			"status": "Not Started",
+			"custom_nama_penimbang": "Kru Company Lain",
+		}).db_insert()
+
+		detail = wo_detail(wo.name)
+		self.assertEqual(detail["suggested_penimbang"], "Kru Juri")
+		self.assertEqual(detail["suggested_leader"], "Rina")
+		self.assertNotEqual(detail["suggestion_sources"].get("penimbang"), other_name)
+
 	def test_t35_wo_handover_summary_field_contract(self):
 		"""T35: the five handover summary fields exist on the Work Order as
 		read-only + allow-on-submit with exact types — written only through
