@@ -517,12 +517,12 @@ class TestHandoverNativeProof(IntegrationTestCase):
 	def test_t21_qtyinpack_source_is_item_uom_conversion(self):
 		"""The qtyInPack source the WO workspace uses: Item UOM Conversion
 		Detail (Item.uoms conversion_factor) selected by
-		Item.custom_default_uom_warehouse — resolved by api.work_order._enrich_units."""
+		Item.custom_default_inventory_unit_of_measure — resolved by api.work_order._enrich_units."""
 		from production_app.api.work_order import _enrich_units
 
 		suffix = random_string(6).upper()
 		item = _make_batch_item(f"{PREFIX}-PACK-{suffix}", self.group, self.uom)
-		item.custom_default_uom_warehouse = "Pack"
+		item.custom_default_inventory_unit_of_measure = "Pack"
 		item.append("uoms", {"uom": "Pack", "conversion_factor": 25})
 		item.save()
 

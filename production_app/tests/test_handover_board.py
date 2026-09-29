@@ -115,7 +115,7 @@ class TestHandoverBoard(IntegrationTestCase):
 		)
 		cls.fg_name = frappe.db.get_value("Item", cls.fg, "item_name")
 		item = frappe.get_cached_doc("Item", cls.fg)
-		item.custom_default_uom_warehouse = "Pack"  # qtyInPack = 25 Pcs/Pack
+		item.custom_default_inventory_unit_of_measure = "Pack"  # qtyInPack = 25 Pcs/Pack
 		item.append("uoms", {"uom": "Pack", "conversion_factor": 25})
 		item.save()
 		cls.fg2 = _make_item(f"{PREFIX}-FG2-{suffix}", cls.group, cls.uom)
@@ -123,7 +123,7 @@ class TestHandoverBoard(IntegrationTestCase):
 			f"{PREFIX}-FG3-{suffix}", cls.group, cls.uom, item_name=f"T23 FG Fifo A {suffix}"
 		)
 		item3 = frappe.get_cached_doc("Item", cls.fg3)
-		item3.custom_default_uom_warehouse = "Pack"  # qtyInPack = 25 Pcs/Pack
+		item3.custom_default_inventory_unit_of_measure = "Pack"  # qtyInPack = 25 Pcs/Pack
 		item3.append("uoms", {"uom": "Pack", "conversion_factor": 25})
 		item3.save()
 		cls.fg3_name = frappe.db.get_value("Item", cls.fg3, "item_name")

@@ -148,7 +148,7 @@ class TestHandoverActions(IntegrationTestCase):
 		"""T35: the raw conversion the server validates on — display UOM is
 		exactly Pack with the given raw factor (never the display fallback)."""
 		item = frappe.get_cached_doc("Item", item_code)
-		item.custom_default_uom_warehouse = "Pack"
+		item.custom_default_inventory_unit_of_measure = "Pack"
 		item.append("uoms", {"uom": "Pack", "conversion_factor": factor})
 		item.save()
 
@@ -667,16 +667,18 @@ class TestHandoverActions(IntegrationTestCase):
 				_expected_unit_count(wo, lot, 100)
 			self.assertIn("konversi", str(ctx.exception))
 
-	def test_t39_invalid_alternate_conversion_rejected_zero_writes(self):
+	def test_t39_invalid_alternate_conversion_rejected_at_source(self):
 		"""An FG item whose warehouse display UOM is an ALTERNATE UOM without a
-		valid conversion row (e.g. Default UOM Gudang = Pack, no Pack factor)
-		is rejected with zero writes — the system never guesses a factor."""
+		valid conversion row (Default Inventory UOM = Pack, no Pack factor) is
+		REJECTED at Item save by warehouse_app's validation (29 Sep: the field
+		moved to warehouse_app ownership) — an unguessable factor can never
+		exist in data, so the request path never sees it."""
 		code = self._make_item(f"{PREFIX}-FGWP-{random_string(4).lower()}")
 		item = frappe.get_cached_doc("Item", code)
-		item.custom_default_uom_warehouse = "Pack"  # no uoms row added
-		item.save()
-		wo, _ = self._lot_ready(50, item=code, bom_no=self._make_bom(code))
-		self._assert_zero_write_rejection(wo, dict(box_1=5, box_1_qty=10), "konversi Pack")
+		item.custom_default_inventory_unit_of_measure = "Pack"  # no uoms row added
+		with self.assertRaises(frappe.ValidationError) as ctx:
+			item.save()
+		self.assertIn("tidak valid", str(ctx.exception))
 
 	def test_t39_stock_uom_item_requests_in_pcs(self):
 		"""T39 universal path: an item with NO warehouse UOM setting counts in

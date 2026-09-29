@@ -6,7 +6,7 @@
 #   sendiri — kasus yang paling sering salah; konversi item-specific ditemukan
 #   dengan faktor benar; UOM tanpa baris → found False + faktor fallback 1
 #   (bentuk balasan = drop-in pengganti Server Script lama);
-# - item_plan_info: rantai UOM default (custom_default_uom_warehouse → stock
+# - item_plan_info: rantai UOM default (custom_default_inventory_unit_of_measure → stock
 #   UOM) beserta faktornya, dan BOM default aktif (name, bom_name, quantity);
 # - bom_info: nama tampilan + quantity untuk ganti BOM manual.
 #
@@ -37,7 +37,7 @@ def _make_item(suffix, with_default_uom=True):
 			"item_group": frappe.db.get_value("Item Group", {"is_group": 0}, "name"),
 			"stock_uom": "Nos",
 			"is_stock_item": 1,
-			"custom_default_uom_warehouse": uom if with_default_uom else None,
+			"custom_default_inventory_unit_of_measure": uom if with_default_uom else None,
 			"uoms": [{"uom": uom, "conversion_factor": 12}],
 		}
 	).insert()

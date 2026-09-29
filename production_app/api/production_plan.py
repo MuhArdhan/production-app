@@ -20,11 +20,12 @@ from frappe.utils import flt
 
 def _default_uom(item):
 	"""Rantai UOM default input — sama dengan _enrich_units (work_order):
-	field milik warehouse_app (W21) menang, lalu field production_app, lalu
-	stock UOM. .get() aman di site tanpa field warehouse_app."""
+	field milik warehouse_app (W21), lalu stock UOM. .get() aman di site
+	tanpa field warehouse_app. Field warisan production_app
+	(custom_default_uom_warehouse) dipensiunkan dari rantai ini; nilainya
+	yang dimigrasikan warehouse_app ke field baru."""
 	return (
 		item.get("custom_default_inventory_unit_of_measure")
-		or item.get("custom_default_uom_warehouse")
 		or item.stock_uom
 	)
 

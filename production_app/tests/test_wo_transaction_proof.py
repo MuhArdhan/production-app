@@ -1349,7 +1349,7 @@ class TestWorkOrderTransactionProof(IntegrationTestCase):
 		from production_app.api.work_order import wo_detail, _enrich_units
 		item = frappe.get_doc("Item", self.fg)
 		alternate = frappe.db.get_value("UOM", {"name": ("!=", self.uom)}, "name")
-		item.custom_default_uom_warehouse = alternate
+		item.custom_default_inventory_unit_of_measure = alternate
 		item.append("uoms", {"uom": alternate, "conversion_factor": 12})
 		item.save()
 		wo = self._make_wo(216, submit=False)
@@ -1360,9 +1360,13 @@ class TestWorkOrderTransactionProof(IntegrationTestCase):
 		rows = [frappe._dict(name=wo.name, production_item=self.fg)]
 		_enrich_units(rows)
 		self.assertEqual(rows[0].display_conversion_factor, 12)
+		# 29 Sep: kondisi "field terisi tanpa baris konversi" tidak lagi sah —
+		# warehouse_app menolaknya saat Item disimpan, jadi invarian "tidak
+		# menebak faktor" dijaga di sumber data.
 		item.uoms = [row for row in item.uoms if row.uom != alternate]
-		item.save()
-		self.assertIsNone(wo_detail(wo.name)["display_conversion_factor"])
+		with self.assertRaises(frappe.ValidationError):
+			item.save()
+		self.assertEqual(wo_detail(wo.name)["display_conversion_factor"], 12)
 
 	def test_fu13_suggestions_follow_same_product_and_user_toggle(self):
 		from production_app.api.work_order import prepare, suggestion_preferences_save, wo_detail

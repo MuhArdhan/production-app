@@ -198,14 +198,17 @@ class TestHandoverSetup(IntegrationTestCase):
 		}
 		self.assertEqual(required_layout - migrated_wo, set())
 
+		# 29 Sep: custom_default_uom_warehouse dipensiunkan dari spec (digantikan
+		# custom_default_inventory_unit_of_measure milik warehouse_app, W21) —
+		# yang dijamin spec ini tinggal rantai gudang.
 		required_item = {
-			"custom_default_uom_warehouse",
 			"custom_default_source_warehouse",
 			"custom_default_wip_warehouse",
 			"custom_default_fg_warehouse",
 		}
 		migrated_item = {spec["fieldname"] for spec in upgrade.ITEM_FIELDS}
 		self.assertEqual(required_item - migrated_item, set())
+		self.assertNotIn("custom_default_uom_warehouse", migrated_item)
 		self.assertEqual(hooks.required_apps, ["erpnext"])
 		self.assertEqual(hooks.after_install, "production_app.upgrade.apply")
 

@@ -105,7 +105,12 @@ WORKSPACE_FIELDS = [
 ]
 
 ITEM_FIELDS = [
-	_field("custom_default_uom_warehouse", "Default UOM", "Link", "stock_uom", options="UOM", hidden=1),
+	# 29 Sep: ensure custom_default_uom_warehouse (field warisan, dulu hidden) DIPENSIUNKAN —
+	# digantikan penuh oleh custom_default_inventory_unit_of_measure milik warehouse_app
+	# (W21), yang juga memigrasikan nilainya. Kolom lama di site eksisting dibiarkan utuh
+	# (data terpelihara); tidak ada pembaca lagi di repo ini. Anchor source_warehouse
+	# sengaja tetap menunjuk nama kolom lama supaya site eksisting konvergen tanpa churn —
+	# di site baru anchor tak ada dan frappe cukup menambahkan field di akhir layout.
 	_field("custom_default_source_warehouse", "Default Source Warehouse", "Link", "custom_default_uom_warehouse", options="Warehouse"),
 	_field("custom_default_wip_warehouse", "Default WIP Warehouse", "Link", "custom_default_source_warehouse", options="Warehouse"),
 	_field("custom_default_fg_warehouse", "Default FG Warehouse", "Link", "custom_default_wip_warehouse", options="Warehouse"),
