@@ -1,0 +1,130 @@
+{
+  "captured_at": "2026-09-29 20:56:40.435983",
+  "custom_docperm": {
+    "Item": [],
+    "Material Request Item": [
+      {
+        "amend": 0,
+        "cancel": 0,
+        "create": 1,
+        "delete": 0,
+        "if_owner": 0,
+        "permlevel": 0,
+        "read": 1,
+        "role": "Manufacturing Manager",
+        "submit": 0,
+        "write": 0
+      },
+      {
+        "amend": 0,
+        "cancel": 0,
+        "create": 1,
+        "delete": 0,
+        "if_owner": 0,
+        "permlevel": 0,
+        "read": 1,
+        "role": "Manufacturing User",
+        "submit": 0,
+        "write": 0
+      }
+    ],
+    "Stock Entry": [],
+    "Warehouse": [],
+    "Work Order": []
+  },
+  "docperm": {
+    "Item": [
+      {
+        "permlevel": 0,
+        "role": "Accounts User"
+      },
+      {
+        "permlevel": 0,
+        "role": "Desk User"
+      },
+      {
+        "permlevel": 0,
+        "role": "Item Manager"
+      },
+      {
+        "permlevel": 0,
+        "role": "Maintenance User"
+      },
+      {
+        "permlevel": 0,
+        "role": "Manufacturing User"
+      },
+      {
+        "permlevel": 0,
+        "role": "Purchase User"
+      },
+      {
+        "permlevel": 0,
+        "role": "Sales User"
+      },
+      {
+        "permlevel": 0,
+        "role": "Stock Manager"
+      },
+      {
+        "permlevel": 0,
+        "role": "Stock User"
+      }
+    ],
+    "Material Request Item": [],
+    "Stock Entry": [
+      {
+        "permlevel": 0,
+        "role": "Manufacturing Manager"
+      },
+      {
+        "permlevel": 0,
+        "role": "Manufacturing User"
+      },
+      {
+        "permlevel": 0,
+        "role": "Stock Manager"
+      },
+      {
+        "permlevel": 0,
+        "role": "Stock User"
+      }
+    ],
+    "Warehouse": [
+      {
+        "permlevel": 0,
+        "role": "Accounts User"
+      },
+      {
+        "permlevel": 0,
+        "role": "Item Manager"
+      },
+      {
+        "permlevel": 0,
+        "role": "Manufacturing User"
+      },
+      {
+        "permlevel": 0,
+        "role": "Purchase User"
+      },
+      {
+        "permlevel": 0,
+        "role": "Sales User"
+      },
+      {
+        "permlevel": 0,
+        "role": "Stock User"
+      }
+    ],
+    "Work Order": [
+      {
+        "permlevel": 0,
+        "role": "Manufacturing User"
+      },
+      {
+        "permlevel": 0,
+        "role": "Stock User"
+      }
+    ]
+  }
+}

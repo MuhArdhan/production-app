@@ -129,7 +129,11 @@ class TestHandoverActions(IntegrationTestCase):
 		)
 		warehouse_defaults_save(handover_warehouse=cls.target_wh)
 
-		cls.gudang = cls._make_user(f"t24.gudang.{suffix.lower()}@prodapp.example.com", ["Gudang Barang Jadi"])
+		# FU64: persona gudang jujur pasca-migrasi — role legacy + Stock User
+		# (akses data SE/WO/Item/Warehouse kini lewat hak native Stock User).
+		cls.gudang = cls._make_user(
+			f"t24.gudang.{suffix.lower()}@prodapp.example.com", ["Gudang Barang Jadi", "Stock User"]
+		)
 		cls.prod = cls._make_user(f"t24.prod.{suffix.lower()}@prodapp.example.com", ["Manufacturing User"])
 		cls.bare = cls._make_user(f"t24.bare.{suffix.lower()}@prodapp.example.com", [])
 
@@ -1213,23 +1217,11 @@ class TestHandoverActions(IntegrationTestCase):
 		before = self._summary(wo.name)
 		self.assertEqual(before.custom_handover_material_request, mr.name)
 
-		# fixture: deny Work Order READ for the whole gudang role. The site
-		# grants it via a standing Custom DocPerm row and frappe ORs every
-		# role row (get_role_permissions), so a second read=0 row proves
-		# nothing — the existing grant itself is flipped. This framework rolls
-		# back per CLASS (not per test), so the flip is restored in the
-		# instance cleanup to keep the rest of the class unpoisoned.
-		perm = frappe.db.get_value(
-			"Custom DocPerm",
-			{"parent": "Work Order", "role": "Gudang Barang Jadi"},
-			["name", "read"],
-			as_dict=True,
-		)
-		if perm and perm.read:
-			frappe.db.set_value("Custom DocPerm", perm.name, "read", 0)
-			frappe.clear_cache(doctype="Work Order")  # db.set_value fires no on_update
-			self.addCleanup(frappe.db.set_value, "Custom DocPerm", perm.name, "read", perm.read)
-			self.addCleanup(frappe.clear_cache, doctype="Work Order")
+		# FU64: baris Custom DocPerm WO dihapus (doctype retired — native yang
+		# berlaku), jadi skenario "tanpa read Work Order" cukup lewat persona
+		# role legacy MURNI: Gudang Barang Jadi tanpa Stock User tidak punya
+		# baca Work Order native (kontrak migrasi FU64 — user gudang wajib
+		# membawa Stock User).
 		noread = self._make_user(
 			f"t24.noread.{random_string(6).lower()}@prodapp.example.com", ["Gudang Barang Jadi"]
 		)
@@ -1357,6 +1349,42 @@ class TestHandoverActions(IntegrationTestCase):
 			self.assertEqual(res["stock_entry"], frappe.db.get_value(
 				"Stock Entry Detail", {"material_request": both_mr.name}, "parent"
 			))
+		finally:
+			frappe.set_user("Administrator")
+
+	# -------------------------------- 5c. FU64: satu akun empat role native
+
+	def test_t64_four_role_account_runs_both_sides(self):
+		"""FU64 — skenario org nyata: satu user memegang Stock User + Stock
+		Manager + Manufacturing User + Manufacturing Manager. Union native =
+		akses penuh dua sisi dalam satu akun (dulu DocPerm custom sparse
+		menolak hampir semuanya — inilah laporan "4-role merespon jelek").
+		Catatan konvensi native: role manager MURNI (tanpa role User-nya)
+		bukan persona app — WO read hanya lewat Manufacturing User/Stock
+		User, jadi papan butuh pasangan role (didokumentasikan FU64)."""
+		four = self._make_user(
+			f"t64.four.{random_string(6).lower()}@prodapp.example.com",
+			["Stock User", "Stock Manager", "Manufacturing User", "Manufacturing Manager"],
+		)
+		wo, _ = self._lot_ready(90)
+
+		frappe.set_user(four)
+		try:
+			board = handover_board()
+			self.assertTrue(board["roles"]["is_gudang"])
+			self.assertTrue(board["roles"]["is_produksi"])
+			self.assertTrue(board["roles"]["is_manajer_produksi"])
+			self.assertTrue(board["roles"]["can_settings"])
+			# sisi gudang: request; sisi produksi: kirim — dalam satu akun
+			mr_name = create_request(wo.name, box_1=8, box_1_qty=16)["material_request"]
+			res = send_handover(mr_name)
+			self.assertTrue(res["ok"])
+			self.assertTrue(frappe.db.exists("Stock Entry", res["stock_entry"]))
+			# sisi gudang lagi: batalkan request kedua (gate ROLES_GUDANG)
+			wo2, _ = self._lot_ready(30)
+			mr2 = create_request(wo2.name, box_1=4, box_1_qty=8)["material_request"]
+			cancel_request(mr2)
+			self.assertEqual(frappe.db.get_value("Material Request", mr2, "docstatus"), 2)
 		finally:
 			frappe.set_user("Administrator")
 

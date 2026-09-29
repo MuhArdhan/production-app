@@ -4,9 +4,12 @@ import { rowClickAction, seRouteLabel } from '../src/handover-se.js'
 
 const req = (over = {}) => ({ lane: 'request', flag: null, stockEntry: null, ...over })
 
-test('request tanpa flag: produksi → kirim (FU48: satu-satunya aksi baris)', () => {
+test('request tanpa flag: produksi ATAU manager → kirim (FU64: gate server selaras kanban)', () => {
   const produksi = { is_gudang: false, is_produksi: true }
   assert.equal(rowClickAction(req(), produksi), 'send')
+  // FU64: Manufacturing Manager murni juga boleh kirim (dulu baris mati
+  // padahal kanban bisa — inkonsisten dengan gate server)
+  assert.equal(rowClickAction(req(), { is_produksi: false, is_manajer_produksi: true }), 'send')
   // role lain (gudang-only / tanpa role) tidak lagi punya aksi baris
   assert.equal(rowClickAction(req(), { is_gudang: true, is_produksi: false }), null)
   assert.equal(rowClickAction(req(), { is_gudang: false, is_produksi: false }), null)

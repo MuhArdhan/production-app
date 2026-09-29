@@ -141,10 +141,6 @@ LEADER_FIELDNAME = "custom_leader_produksi"
 
 SNAPSHOT_DIR = os.path.join(os.path.dirname(__file__), "..", "snapshots")
 
-
-def _runtime_snapshot_path(filename):
-	return frappe.get_site_path("private", "files", "production_app_snapshots", filename)
-
 # Box 1/2 on Work Order AND Material Request: Float kg weights written at the
 # "Verifikasi Siap Kirim" step (T31 ruling R8). The FU7 text-identifier era
 # (Data, e.g. BX-2201) is migrated away by ensure_box_kg_fields — old values
@@ -397,84 +393,6 @@ def snapshot_fu58():
 	return FU58_SNAPSHOT
 
 
-def ensure_batch_permission():
-	"""Manufacturing User (operator workspace role) must read/create Batch:
-	native Work Order submission creates the FG batch for batch-tracked items,
-	and the doctype's stock DocPerm only grants Item Manager — without this the
-	Persiapan submit fails for every operator. Minimal grant: read + create."""
-	snap_path = _runtime_snapshot_path("T18-batch-perms-pre.json")
-	if not os.path.exists(snap_path):
-		os.makedirs(os.path.dirname(snap_path), exist_ok=True)
-		with open(snap_path, "w") as f:
-			json.dump(
-				{
-					"captured_at": frappe.utils.now(),
-					"docperm": frappe.get_all(
-						"DocPerm", filters={"parent": "Batch"},
-						fields=["role", "permlevel", "read", "write", "create", "submit"],
-					),
-					"custom_docperm": frappe.get_all(
-						"Custom DocPerm", filters={"parent": "Batch"},
-						fields=["role", "permlevel", "read", "write", "create", "submit"],
-					),
-				},
-				f, indent=2, sort_keys=True, default=str,
-			)
-
-	existing = frappe.db.get_value(
-		"Custom DocPerm", {"parent": "Batch", "role": "Manufacturing User"}, "name"
-	)
-	if existing:
-		return "unchanged"
-	frappe.get_doc({
-		"doctype": "Custom DocPerm",
-		"parent": "Batch",
-		"role": "Manufacturing User",
-		"permlevel": 0,
-		"read": 1,
-		"create": 1,
-	}).insert()
-	frappe.clear_cache(doctype="Batch")
-	return "created"
-
-
-def ensure_stock_user_batch_read():
-	"""Stock User as the gudang side of Serah Terima (user decision 2026-09-14):
-	the board derivation and create_request read the FG Batch (get_batch_qty +
-	batch gate in _wo_lot_rows); native Batch DocPerms grant only Item/Stock
-	Manager. Minimal additive grant: read. Snapshot-first, idempotent."""
-	snap_path = _runtime_snapshot_path("stockuser-batch-read-pre.json")
-	if not os.path.exists(snap_path):
-		os.makedirs(os.path.dirname(snap_path), exist_ok=True)
-		with open(snap_path, "w") as f:
-			json.dump(
-				{
-					"captured_at": frappe.utils.now(),
-					"docperm": frappe.get_all(
-						"DocPerm", filters={"parent": "Batch"},
-						fields=["role", "permlevel", "read", "write", "create", "submit"],
-					),
-					"custom_docperm": frappe.get_all(
-						"Custom DocPerm", filters={"parent": "Batch"},
-						fields=["role", "permlevel", "read", "write", "create", "submit"],
-					),
-				},
-				f, indent=2, sort_keys=True, default=str,
-			)
-
-	if frappe.db.exists("Custom DocPerm", {"parent": "Batch", "role": "Stock User"}):
-		return "unchanged"
-	frappe.get_doc({
-		"doctype": "Custom DocPerm",
-		"parent": "Batch",
-		"role": "Stock User",
-		"permlevel": 0,
-		"read": 1,
-	}).insert()
-	frappe.clear_cache(doctype="Batch")
-	return "created"
-
-
 # ---------------------------------------------------------------------------
 # T22 — Serah Terima handover metadata (HANDOVER_PLAN.md §3, task-22-brief):
 # Role "Gudang Barang Jadi", custom DocPerms (incl. reconciling the pre-existing
@@ -587,45 +505,69 @@ MR_CUSTOM_FIELDS = [
 	},
 ]
 
-# Permission matrix (HANDOVER_PLAN.md §3). Rights not listed stay/stored 0 on
-# upsert. Gudang Barang Jadi: full MR lifecycle + read everywhere it must see.
-# Manufacturing User: read/write on MR only (drift fix — the pre-existing
-# custom row granted create/submit; snapshot T22-pre-migration.json holds the
-# before-state for rollback).
-# FO 2026-09-18 (Form Order, TASKS.md section I): alur baru "produksi minta
-# barang dari gudang" menaikkan Manufacturing User ke create/submit/cancel MR
-# (+create MR Item) dan Gudang Barang Jadi ke SE penuh untuk memproses — hak
-# lama read/write dipertahankan; before-state ada di form-order-pre.json.
+# FU64 (2026-09-29) — model role native: Custom DocPerm Frappe MENGGANTIKAN
+# DocPerm standar (frappe/model/meta.py set_custom_permissions: SATU baris
+# custom saja -> meta.permissions = baris custom SAJA, standar diabaikan).
+# Matrix lama didesain seolah delta; di situs yang apply() dari kode bersih
+# (rebuild 29 Sep) hak native 4 role lenyap — Work Order efektif tinggal
+# "Gudang Barang Jadi: read" — sehingga user Stock User/Stock Manager/
+# Manufacturing User/Manufacturing Manager dilayani menu (UI membaca nama
+# role) tapi ditolak server (DocPerm). Konsekuensinya:
+# (1) Custom DocPerm hanya di doctype yang BENAR-BENAR butuh tambahan di
+#     luar native, dan set-nya HARUS LENGKAP (replacement-safe):
+#     - Material Request: native tidak punya role Manufacturing; produksi
+#       (Form Order) dan gudang perlu lifecycle MR di samping 4 role native.
+#     - Batch: native cuma Item Manager; WO submit membuat batch FG dan
+#       papan serah terima membaca batch.
+#     Baris "cermin native" disalin OTOMATIS dari tabDocPerm
+#     (MIRROR_DOCPERM_ROLES) setiap apply() — ikut track upgrade ERPNext.
+# (2) Doctype lain DIPENSIUNKAN dari custom perm: retire_stale_docperms()
+#     menghapus SEMUA Custom DocPerm di sana (snapshot-first) sehingga DocPerm
+#     standar berlaku lagi dan ikut track upgrade ERPNext. Baris custom di
+#     Material Request Item memang tak pernah berpengaruh — child table
+#     sepenuhnya parent-governed (frappe has_child_permission mengabaikan
+#     perm child).
+# KONTRAK KEPEMILIKAN (FU64): migrate ke depan MENG-SWEEP Custom DocPerm di
+# Work Order, Stock Entry, Item, Warehouse, Material Request Item — edit
+# manual Permission Manager di kelima doctype itu akan dihapus tercatat.
 DOCPERM_MATRIX = {
 	"Material Request": {
-		# FU48c: delete=1 — temuan walkthrough FU48a: gudang murni (tanpa Stock
-		# User) tak bisa menghapus DRAFT MR buatannya sendiri di Desk; kini
-		# gudang bekerja di Desk native (FU48b), draft salah harus bisa
-		# dibuang sendiri. if_owner=1 (sesuai draft awal brief) TERBUKTI
-		# merusak: flag itu berlaku SATU BARIS penuh — get_list gudang
-		# terfilter owner sendiri (papan requests kosong: test_t23_role_
-		# filtering_per_session_user) dan submit/cancel docless gagal
-		# (test_t22_gudang_runs_mr_lifecycle...) — keduanya regresi suite
-		# handover yang tidak boleh diubah. Baris ini memang sudah membebaskan
-		# submit/cancel/amend tanpa if_owner sejak T22 (lingkup kepercayaan
-		# yang sama), jadi delete ikut pola itu; if_owner eksplisit 0 untuk
-		# mengembalikan drift percobaan pertama.
-		HANDOVER_ROLE: {"read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 1, "amend": 1, "delete": 1, "if_owner": 0},
-		"Manufacturing User": {"read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 1, "amend": 0},
+		# amend=0: keputusan FO/T22 (tanpa amend setelah cancel); delete=1
+		# mengikuti konvensi native (semua role MR native punya delete).
+		"Manufacturing User": {"read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 1, "amend": 0, "delete": 1, "report": 1, "share": 1},
+		"Manufacturing Manager": {"read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 1, "amend": 0, "delete": 1, "report": 1, "share": 1},
+		# Legacy: full MR lifecycle + delete draft sendiri (FU48c); if_owner
+		# eksplisit 0 — flag itu berlaku SATU BARIS penuh (runtuhkan scope
+		# baca papan), lihat riwayat FU48c di bawah.
+		"Gudang Barang Jadi": {"read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 1, "amend": 1, "delete": 1, "if_owner": 0, "report": 1, "share": 1},
 	},
-	"Material Request Item": {
-		HANDOVER_ROLE: {"read": 1, "create": 1},
+	"Batch": {
+		# WO submit membuat batch FG (persiapan) — operator butuh create;
+		# papan serah terima + FO membaca batch untuk semua persona.
 		"Manufacturing User": {"read": 1, "create": 1},
+		"Manufacturing Manager": {"read": 1},
+		"Stock User": {"read": 1},
+		"Stock Manager": {"read": 1},
+		"Gudang Barang Jadi": {"read": 1},
 	},
-	"Work Order": {HANDOVER_ROLE: {"read": 1}},
-	"Batch": {HANDOVER_ROLE: {"read": 1}},
-	"Stock Entry": {HANDOVER_ROLE: {"read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 1, "amend": 0}},
-	"Item": {HANDOVER_ROLE: {"read": 1}},
-	# Ruling 6 check: no standard DocPerm grants Warehouse read to the new role
-	# (role is new — zero rows anywhere); without it the MR warehouse links and
-	# desk pickers are unusable for gudang users. Additive only.
-	"Warehouse": {HANDOVER_ROLE: {"read": 1}},
 }
+
+# Cermin baris DocPerm standar (disalin identik tiap apply — FU64).
+MIRROR_DOCPERM_ROLES = {
+	"Material Request": ("Purchase Manager", "Purchase User", "Stock Manager", "Stock User"),
+	"Batch": ("Item Manager",),
+}
+
+# Field yang disalin mirror dari DocPerm standar (hak fungsional + UI Desk).
+MIRROR_PERM_FIELDS = (
+	"read", "write", "create", "delete", "submit", "cancel", "amend",
+	"report", "email", "print", "share", "export", "import", "if_owner",
+)
+
+# Doctype yang DIPENSIUNKAN dari custom perm (set native yang berlaku).
+RETIRED_DOCPERM_DOCTYPES = ("Work Order", "Stock Entry", "Item", "Warehouse", "Material Request Item")
+
+FU64_SNAPSHOT = os.path.join(SNAPSHOT_DIR, "fu64-docperm-retire-pre.json")
 
 DOCPERM_RIGHTS = ("read", "write", "create", "submit", "cancel", "amend")
 
@@ -717,8 +659,31 @@ def _ensure_docperm(doctype, role, flags):
 	return "updated" if changed else "unchanged"
 
 
-def ensure_handover_permissions():
-	"""Role "Gudang Barang Jadi" + the DOCPERM_MATRIX custom DocPerms. Idempotent."""
+def _mirror_docperm(doctype, role):
+	"""FU64: salin SATU baris DocPerm standar (permlevel 0) ke Custom DocPerm
+	dengan flag identik. Matrix custom MR/Batch harus LENGKAP (replacement
+	semantik), dan mirror yang disalin ulang setiap apply() ikut track
+	upgrade ERPNext (native berubah -> mirror menyusul). Tanpa baris standar
+	untuk role itu -> dilewati (tidak ada yang dicerminkan)."""
+	std = frappe.get_all(
+		"DocPerm",
+		filters={"parent": doctype, "role": role, "permlevel": 0},
+		fields=MIRROR_PERM_FIELDS,
+		limit=1,
+	)
+	if not std:
+		return "no-standard-row"
+	flags = {field: int(std[0].get(field) or 0) for field in std[0]}
+	return _ensure_docperm(doctype, role, flags)
+
+
+def ensure_docperm_matrix():
+	"""FU64: upsert Custom DocPerm matrix LENGKAP (Material Request + Batch) —
+	satu sumber kebenaran pengganti ensure_batch_permission /
+	ensure_stock_user_batch_read / ensure_handover_permissions /
+	ensure_form_order_permissions (FO_DOCPERMS). Role legacy dijamin ada
+	(baris matrix merujuknya). Idempoten; drift vs native dijaga mirror +
+	test_docperm_matrix."""
 	out = []
 	if not frappe.db.exists("Role", HANDOVER_ROLE):
 		frappe.get_doc({"doctype": "Role", "role_name": HANDOVER_ROLE, "desk_access": 1}).insert()
@@ -729,8 +694,76 @@ def ensure_handover_permissions():
 		for role, flags in roles.items():
 			out.append(f"{doctype}/{role}: {_ensure_docperm(doctype, role, flags)}")
 			touched.add(doctype)
+		for role in MIRROR_DOCPERM_ROLES.get(doctype, ()):
+			out.append(f"{doctype}/{role} (mirror): {_mirror_docperm(doctype, role)}")
+			touched.add(doctype)
 	for doctype in touched:
 		frappe.clear_cache(doctype=doctype)
+	return out
+
+
+def ensure_legacy_gudang_stock_user():
+	"""FU64: setiap User pemegang role legacy "Gudang Barang Jadi" mendapat
+	Stock User — akses datanya kini lewat hak native (baris DocPerm legacy di
+	doctype native dihapus retire_stale_docperms; di MR/Batch tetap lewat
+	matrix). Gates masih menerima role legacy (transisi). Idempoten;
+	clear_cache(user) per user terdampak agar sesi berjalan ikut mendapat
+	role baru (cache role per-user di redis)."""
+	holders = frappe.get_all(
+		"Has Role",
+		filters={"role": HANDOVER_ROLE, "parenttype": "User"},
+		pluck="parent",
+	)
+	out = []
+	for user in holders:
+		if user == "Administrator":
+			continue
+		if frappe.db.exists("Has Role", {"parent": user, "parenttype": "User", "role": "Stock User"}):
+			continue
+		frappe.get_doc({
+			"doctype": "Has Role",
+			"parent": user,
+			"parenttype": "User",
+			"parentfield": "roles",
+			"role": "Stock User",
+		}).insert()
+		frappe.clear_cache(user=user)
+		out.append(f"{user}: Stock User granted")
+	return out
+
+
+def retire_stale_docperms():
+	"""FU64: hapus SEMUA Custom DocPerm di doctype yang dipensiunkan dari
+	custom perm (Work Order, Stock Entry, Item, Warehouse, Material Request
+	Item) — replacement berarti SATU baris custom pun membekukan seluruh perm
+	doctype itu dan memutus baris native; setelah hapus, DocPerm standar
+	ERPNext berlaku lagi (termasuk ikut track upgrade). Snapshot penuh sekali
+	di awal (FU64_SNAPSHOT) untuk rollback. Idempoten; clear_cache(doctype)
+	WAJIB untuk SEMUA doctype retired (meta ter-cache di redis — tanpa ini
+	replacement semantik tetap hidup meski baris sudah hilang)."""
+	if not os.path.exists(FU64_SNAPSHOT):
+		os.makedirs(SNAPSHOT_DIR, exist_ok=True)
+		data = {"captured_at": frappe.utils.now(), "custom_docperm": {}, "docperm": {}}
+		for dt in RETIRED_DOCPERM_DOCTYPES:
+			data["custom_docperm"][dt] = frappe.get_all(
+				"Custom DocPerm",
+				filters={"parent": dt},
+				fields=["role", "permlevel", "read", "write", "create", "submit", "cancel", "amend", "delete", "if_owner"],
+				order_by="role",
+			)
+			data["docperm"][dt] = frappe.get_all(
+				"DocPerm", filters={"parent": dt}, fields=["role", "permlevel"], order_by="role"
+			)
+		with open(FU64_SNAPSHOT, "w") as f:
+			json.dump(data, f, indent=2, sort_keys=True, default=str)
+
+	out = []
+	for dt in RETIRED_DOCPERM_DOCTYPES:
+		for name in frappe.get_all("Custom DocPerm", filters={"parent": dt}, pluck="name"):
+			frappe.delete_doc("Custom DocPerm", name, ignore_permissions=True)
+			out.append(f"{dt}/{name}: deleted")
+	for dt in RETIRED_DOCPERM_DOCTYPES:
+		frappe.clear_cache(doctype=dt)
 	return out
 
 
@@ -1200,22 +1233,13 @@ FO_MR_FIELDS = [
 	},
 ]
 
-FO_DOCPERMS = {
-	"Material Request": {
-		"Manufacturing Manager": {"read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 1, "amend": 0},
-	},
-	"Material Request Item": {
-		"Manufacturing Manager": {"read": 1, "create": 1},
-	},
-}
-
 FO_SNAPSHOT = os.path.join(SNAPSHOT_DIR, "form-order-pre.json")
 
 
 def snapshot_form_order():
 	"""Pre-change snapshot of everything the FO upgrade may touch: MR marker +
 	2 field settings Form Order, dan DocPerm (standard + custom) MR/MR Item/SE
-	utk semua role yang dinaikkan (DOCPERM_MATRIX + FO_DOCPERMS). Runs BEFORE
+	utk semua role yang dinaikkan (DOCPERM_MATRIX). Runs BEFORE
 	any change; apply() calls it only when the file is absent."""
 	os.makedirs(SNAPSHOT_DIR, exist_ok=True)
 	data = {
@@ -1266,21 +1290,6 @@ def ensure_form_order_fields():
 		doc.insert()
 		out.append("Material Request.custom_note: created")
 	frappe.clear_cache(doctype="Material Request")
-	return out
-
-
-def ensure_form_order_permissions():
-	"""Custom DocPerms Form Order (Manufacturing Manager). Idempoten; hak role
-	lain dikelola DOCPERM_MATRIX agar satu sumber kebenaran (tanpa flip-flop
-	antar apply)."""
-	out = []
-	touched = set()
-	for doctype, roles in FO_DOCPERMS.items():
-		for role, flags in roles.items():
-			out.append(f"{doctype}/{role}: {_ensure_docperm(doctype, role, flags)}")
-			touched.add(doctype)
-	for doctype in touched:
-		frappe.clear_cache(doctype=doctype)
 	return out
 
 
@@ -1356,7 +1365,7 @@ def retire_mr_guard():
 # FU48c (2026-09-19) — temuan walkthrough FU48a: gudang murni (tanpa Stock
 # User) tidak bisa menghapus DRAFT Material Request buatannya sendiri di Desk
 # (delete gagal senyap). Flag delete=1 masuk DOCPERM_MATRIX di atas (satu
-# sumber kebenaran, di-upsert ensure_handover_permissions); if_owner=1 dari
+# sumber kebenaran, di-upsert ensure_docperm_matrix); if_owner=1 dari
 # draft brief TERBUKTI merusak (berlaku satu baris penuh, memfilter scope
 # baca gudang — rincian di komentar matrix); di sini hanya pre-state baris
 # MR × Gudang Barang Jadi, di-snapshot sekali.
@@ -1440,15 +1449,17 @@ def apply():
 	sidebar = ensure_workspace_sidebar()
 	result["workspace_sidebar"] = sidebar["workspace_sidebar"]
 	result["desktop_icon"] = ensure_desktop_icon()
-	result["batch_permission"] = ensure_batch_permission()
-	result["stock_user_batch_read"] = ensure_stock_user_batch_read()
+	# FU64: Custom DocPerm konsolidasi — migrasi role legacy dulu (akses
+	# native mereka siap), hapus baris custom di doctype retired, baru
+	# upsert matrix lengkap MR/Batch. Semua idempoten; apply() ×2 konvergen.
+	result["legacy_gudang_stock_user"] = ensure_legacy_gudang_stock_user()
+	result["retired_docperms"] = retire_stale_docperms()
+	result["docperm_matrix"] = ensure_docperm_matrix()
 	result["warehouse_default_fields"] = ensure_warehouse_default_fields()
 	result["retire_company_field"] = retire_company_field()
 	if not os.path.exists(MR_DELETE_SNAPSHOT):
 		snapshot_mr_delete_perm()  # never change the delete perm without a pre-state
-	result["handover_permissions"] = ensure_handover_permissions()
 	result["form_order_fields"] = ensure_form_order_fields()
-	result["form_order_permissions"] = ensure_form_order_permissions()
 	result["mr_guard"] = retire_mr_guard()
 	frappe.clear_cache(doctype=DOCTYPE)
 	frappe.db.commit()

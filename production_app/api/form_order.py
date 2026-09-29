@@ -398,13 +398,13 @@ def _se_or_throw(material_request):
 @frappe.whitelist()
 @_retry_on_deadlock
 def fulfill_form_order(material_request):
-	"""Gudang (Gudang Barang Jadi / Stock User): proses Form Order — Stock
+	"""Gudang (Stock User / Stock Manager / Gudang Barang Jadi): proses Form Order — Stock
 	Entry Material Transfer dari builder native MR->SE, insert + submit dalam
 	satu transaksi (kekurangan stok gagal di validasi native, rollback penuh).
 	Anti-dobel: lock MR + recheck bukti SE di bawah lock."""
 	_require_role(
 		ROLES_GUDANG,
-		_("Hanya peran gudang (Stock User / Gudang Barang Jadi) yang dapat memproses Form Order."),
+		_("Hanya peran gudang (Stock User / Stock Manager / Gudang Barang Jadi) yang dapat memproses Form Order."),
 	)
 	frappe.has_permission("Stock Entry", "create", throw=True)
 	frappe.has_permission("Stock Entry", "submit", throw=True)

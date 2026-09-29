@@ -388,7 +388,12 @@ export function completeProduction(w) { return perform(w, 'finish') }
 // ============================================================================
 
 export const handoverState = reactive({ loading: false, error: null, loaded: false, pending: null, coldPage: 1, coldPageSize: 20 })
-export const handoverBoard = reactive({ targetWarehouse: null, roles: { is_gudang: false, is_produksi: false } })
+export const handoverBoard = reactive({
+  targetWarehouse: null,
+  // FU64: can_settings = kapabilitas server (write Manufacturing Settings)
+  // yang menentukan menu Pengaturan — bukan tebakan nama role di UI.
+  roles: { is_gudang: false, is_produksi: false, is_manajer_produksi: false, can_settings: false }
+})
 export const handoverLots = reactive([])
 export const handoverRequests = reactive([])
 
@@ -434,7 +439,7 @@ function mapRequest(r) {
 function applyBoard(board) {
   handoverBoard.targetWarehouse = board.target_warehouse || null
   handoverBoard.sourceWarehouse = board.source_warehouse || null
-  handoverBoard.roles = board.roles || { is_gudang: false, is_produksi: false }
+  handoverBoard.roles = board.roles || { is_gudang: false, is_produksi: false, is_manajer_produksi: false, can_settings: false }
   handoverLots.splice(0, handoverLots.length, ...board.lots.map(mapLot))
   handoverRequests.splice(0, handoverRequests.length, ...board.requests.map(mapRequest))
 }

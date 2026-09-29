@@ -53,11 +53,13 @@ from production_app.api.work_order import (
 	_enrich_units,
 )
 
-# Sisi gudang serah terima: role kustom ATAU Stock User native (keputusan user
-# 2026-09-14: Manufacturing User + Stock User = dua sisi sekaligus; Stock User
-# saja = hanya halaman Stock Entry dan hanya boleh membuat request).
+# Sisi gudang serah terima: role legacy "Gudang Barang Jadi" ATAU pasangan
+# native Stock User/Stock Manager (keputusan user 2026-09-14; FU64 2026-09-29
+# gudang resmi pindah ke role native — Stock Manager diterima di SEMUA gate;
+# dulu tidak, sehingga create/cancel request & fulfill Form Order ditolak
+# untuk pemegang SM). Data access mereka lewat hak native + matrix upgrade.
 ROLE_GUDANG = "Gudang Barang Jadi"
-ROLES_GUDANG = ("Gudang Barang Jadi", "Stock User")
+ROLES_GUDANG = ("Gudang Barang Jadi", "Stock User", "Stock Manager")
 ROLE_PRODUKSI = "Manufacturing User"
 # FO 2026-09-18: flag terpisah untuk Manufacturing Manager — is_produksi TIDAK
 # dilebarkan (isGudangOnly/landing & aksi kirim di UI tidak berubah); menu Form
@@ -130,6 +132,10 @@ def _roles():
         "is_gudang": any(r in roles for r in ROLES_GUDANG),
         "is_produksi": ROLE_PRODUKSI in roles,
         "is_manajer_produksi": ROLE_MANAJER_PRODUKSI in roles,
+        # FU64: kapabilitas, bukan nama role — menu Pengaturan mengikuti
+        # izin write Manufacturing Settings yang sama yang di-cek server
+        # saat simpan (native: Manufacturing Manager).
+        "can_settings": frappe.has_permission("Manufacturing Settings", "write"),
     }
 
 
@@ -1244,7 +1250,7 @@ def _insert_submitted_handover_mr(wo, amount, stock_uom, source, target, box_val
 @frappe.whitelist()
 @_retry_on_deadlock
 def create_request(work_order, box_1=None, box_1_qty=None, box_2=0, box_2_qty=0, box_3=0, box_3_qty=0):
-    """Gudang side (Gudang Barang Jadi / Stock User): submit a Material Transfer
+    """Gudang side (Stock User / Stock Manager / Gudang Barang Jadi): submit a Material Transfer
     request for the Work Order's FULL produced qty (R3 — no qty dialog, drag is
     the direct action) carrying the validated box allocation. The source
     warehouse is the handover source setting when set, else the SE-derived lot
@@ -1258,7 +1264,7 @@ def create_request(work_order, box_1=None, box_1_qty=None, box_2=0, box_2_qty=0,
     writes on any failure."""
     _require_role(
         ROLES_GUDANG,
-        _("Hanya peran gudang (Stock User / Gudang Barang Jadi) yang dapat membuat permintaan serah terima."),
+        _("Hanya peran gudang (Stock User / Stock Manager / Gudang Barang Jadi) yang dapat membuat permintaan serah terima."),
     )
     frappe.has_permission("Material Request", "create", throw=True)
 
@@ -1395,7 +1401,7 @@ def _cancel_unsent_request(material_request):
 @frappe.whitelist()
 @_retry_on_deadlock
 def cancel_request(material_request):
-    """Gudang side (Gudang Barang Jadi / Stock User): cancel an UNSENT request
+    """Gudang side (Stock User / Stock Manager / Gudang Barang Jadi): cancel an UNSENT request
     (native cancel; audit history stays, reservation is released). The Work
     Order lock is taken FIRST (no MR->WO lock inversion), then the MR is
     re-read and its submitted-SE evidence re-checked; the summary (Link +
@@ -1404,7 +1410,7 @@ def cancel_request(material_request):
     through cancel_group_request while any sibling member is still active."""
     _require_role(
         ROLES_GUDANG,
-        _("Hanya peran gudang (Stock User / Gudang Barang Jadi) yang dapat membatalkan permintaan serah terima."),
+        _("Hanya peran gudang (Stock User / Stock Manager / Gudang Barang Jadi) yang dapat membatalkan permintaan serah terima."),
     )
     plan = frappe.db.get_value("Material Request", material_request, "custom_handover_box_plan")
     if plan:
@@ -1452,7 +1458,7 @@ def create_group_request(work_orders, boxes):
     transaction inserts the plan and one submitted MR per WO."""
     _require_role(
         ROLES_GUDANG,
-        _("Hanya peran gudang (Stock User / Gudang Barang Jadi) yang dapat membuat permintaan serah terima."),
+        _("Hanya peran gudang (Stock User / Stock Manager / Gudang Barang Jadi) yang dapat membuat permintaan serah terima."),
     )
     frappe.has_permission("Material Request", "create", throw=True)
 
@@ -1588,7 +1594,7 @@ def cancel_group_request(box_plan):
     packed. Returns the per-member outcome."""
     _require_role(
         ROLES_GUDANG,
-        _("Hanya peran gudang (Stock User / Gudang Barang Jadi) yang dapat membatalkan permintaan serah terima."),
+        _("Hanya peran gudang (Stock User / Stock Manager / Gudang Barang Jadi) yang dapat membatalkan permintaan serah terima."),
     )
     if not box_plan or not frappe.db.exists("Handover Box Plan", box_plan):
         frappe.throw(_("Handover Box Plan {0} tidak ditemukan.").format(box_plan))
@@ -1654,7 +1660,7 @@ def save_post_packing(material_request, box_1=None, box_2=None):
 @frappe.whitelist()
 @_retry_on_deadlock
 def send_handover(material_request):
-    """Manufacturing User: create + submit the handover Stock Entry moving the
+    """Manufacturing User/Manager: create + submit the handover Stock Entry moving the
     MR's requested qty (= the WO's produced_qty at request time, R6) from the
     source warehouse to the handover target. ONE transaction: any failure rolls
     back with zero partial documents. Batch-tracked rows keep batch_no (the
@@ -1665,7 +1671,8 @@ def send_handover(material_request):
     Work Order summary (Link + boxes) is preserved and the status synchronized
     to Terkirim after the native submit."""
     _require_role(
-        ROLE_PRODUKSI, _("Hanya Manufacturing User yang dapat mengirim serah terima.")
+        (ROLE_PRODUKSI, ROLE_MANAJER_PRODUKSI),
+        _("Hanya Manufacturing User atau Manufacturing Manager yang dapat mengirim serah terima."),
     )
     mr = _handover_mr(material_request)
     frappe.has_permission("Stock Entry", "create", throw=True)

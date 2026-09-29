@@ -57,6 +57,9 @@ def _mr_flags(doctype, role):
 
 
 def _make_user(local, role=None):
+	"""role: satu nama atau list nama — FU64 persona legacy jujur membawa
+	pasangan native (mis. ["Gudang Barang Jadi", "Stock User"], hasil migrasi
+	ensure_legacy_gudang_stock_user)."""
 	suffix = random_string(6).upper()
 	user = (
 		frappe.get_doc(
@@ -70,7 +73,8 @@ def _make_user(local, role=None):
 		.insert()
 	)
 	if role:
-		user.append("roles", {"role": role})
+		for name in role if isinstance(role, (list, tuple)) else [role]:
+			user.append("roles", {"role": name})
 	user.save()
 	return user.name
 
@@ -230,15 +234,25 @@ class TestHandoverSetup(IntegrationTestCase):
 
 	def test_t22_apply_idempotent_and_drift_reconciled(self):
 		"""apply() twice: no error; the second run reports every handover step
-		'unchanged' (incl. box_kg_fields); the Manufacturing User MR row is
-		read/write only."""
+		'unchanged' (incl. box_kg_fields); the Manufacturing User MR row runs
+		the full FO lifecycle with delete; MR Item has NO custom rows (FU64 —
+		child table is parent-governed)."""
 		r1 = upgrade.apply()
 		r2 = upgrade.apply()
-		for key in ("box_kg_fields", "handover_mr_fields", "handover_permissions", "warehouse_default_fields"):
+		for key in ("box_kg_fields", "handover_mr_fields", "docperm_matrix", "warehouse_default_fields"):
 			entries = r2[key].values() if isinstance(r2[key], dict) else r2[key]
 			self.assertTrue(
 				all(entry.endswith(": unchanged") for entry in entries),
 				f"{key} not idempotent: {r2[key]}",
+			)
+		# FU64: retirement konvergen — apply ke-2 tidak menghapus apa pun lagi
+		self.assertEqual(r2["retired_docperms"], [])
+		# FU64: kelima doctype retired benar-benar bersih dari Custom DocPerm
+		for doctype in upgrade.RETIRED_DOCPERM_DOCTYPES:
+			self.assertEqual(
+				frappe.db.count("Custom DocPerm", {"parent": doctype}),
+				0,
+				f"{doctype} must have no custom DocPerm rows",
 			)
 		# FO 2026-09-18 (Form Order): Manufacturing User kini menjalankan siklus
 		# MR penuh (create/submit/cancel) — ruling T22 lama (read/write saja)
@@ -262,9 +276,12 @@ class TestHandoverSetup(IntegrationTestCase):
 			_mr_flags("Material Request", HANDOVER_ROLE),
 			{"read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 1, "amend": 1},
 		)
-		self.assertEqual(_mr_flags("Material Request Item", HANDOVER_ROLE)["create"], 1)
-		# FO: Manufacturing User juga create MR Item (Form Order)
-		self.assertEqual(_mr_flags("Material Request Item", "Manufacturing User")["create"], 1)
+		# FU64: MR Item (child table) TANPA Custom DocPerm — has_child_permission
+		# mengabaikan perm child; akses sepenuhnya parent-governed. Stock Entry
+		# juga retired — set native 4 role yang berlaku.
+		self.assertIsNone(_mr_flags("Material Request Item", HANDOVER_ROLE))
+		self.assertIsNone(_mr_flags("Material Request Item", "Manufacturing User"))
+		self.assertIsNone(_mr_flags("Stock Entry", HANDOVER_ROLE))
 		# T31 (R8): WO AND MR box fields are Float kg (allow_on_submit — written
 		# at Verifikasi Siap Kirim on submitted docs)
 		wo_meta = frappe.get_meta("Work Order")
@@ -384,10 +401,11 @@ class TestHandoverSetup(IntegrationTestCase):
 	# ------------------------------------------------ permission: gudang
 
 	def test_t22_gudang_runs_mr_lifecycle_and_can_fulfill_se(self):
-		"""Gudang Barang Jadi: MR create/submit/cancel allowed; Stock Entry
-		create allowed (FO fulfill, 2026-09-18 — dulu ditolak); Work Order
-		write denied; masters read-only visible."""
-		gudang = _make_user("gudang", HANDOVER_ROLE)
+		"""Persona gudang pasca-FU64 (legacy + Stock User — hasil migrasi
+		ensure_legacy_gudang_stock_user): MR create/submit/cancel; Stock Entry
+		create/submit (native SU — FO fulfill); Work Order/Batch/Item/Warehouse
+		read (native + matrix); Work Order write denied."""
+		gudang = _make_user("gudang", [HANDOVER_ROLE, "Stock User"])
 
 		self.assertTrue(frappe.has_permission("Material Request", "create", user=gudang))
 		self.assertTrue(frappe.has_permission("Material Request", "submit", user=gudang))

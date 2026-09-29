@@ -968,8 +968,10 @@ class TestHandoverBoard(IntegrationTestCase):
 		mr = self._make_mr(wo, 20)
 
 		suffix = random_string(6).upper()
+		# FU64: persona gudang pasca-migrasi = legacy + Stock User (akses papan
+		# lewat hak native Stock User).
 		gudang = self._make_user(
-			f"t23.gudang.{suffix}@prodapp.example.com", ["Gudang Barang Jadi"]
+			f"t23.gudang.{suffix}@prodapp.example.com", ["Gudang Barang Jadi", "Stock User"]
 		)
 		prod = self._make_user(
 			f"t23.prod.{suffix}@prodapp.example.com", ["Manufacturing User"]

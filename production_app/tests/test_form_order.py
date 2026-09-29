@@ -47,6 +47,7 @@ def _company_and_group():
 
 
 def _make_user(local, role=None):
+	"""role: satu nama atau list nama (FU64 persona gabungan)."""
 	suffix = random_string(6).upper()
 	user = (
 		frappe.get_doc(
@@ -60,7 +61,8 @@ def _make_user(local, role=None):
 		.insert()
 	)
 	if role:
-		user.append("roles", {"role": role})
+		for name in role if isinstance(role, (list, tuple)) else [role]:
+			user.append("roles", {"role": name})
 		user.save()
 	return user.name
 
@@ -224,7 +226,7 @@ class TestFormOrder(IntegrationTestCase):
 	def test_fo_apply_idempotent_and_matrix(self):
 		r1 = upgrade.apply()
 		r2 = upgrade.apply()
-		for key in ("form_order_fields", "form_order_permissions", "handover_permissions", "mr_guard"):
+		for key in ("form_order_fields", "docperm_matrix", "mr_guard"):
 			value = r2[key]
 			if isinstance(value, str):
 				self.assertEqual(value, "unchanged", f"{key} not idempotent: {value}")
@@ -245,26 +247,33 @@ class TestFormOrder(IntegrationTestCase):
 
 		def flags(doctype, role):
 			name = frappe.db.get_value("Custom DocPerm", {"parent": doctype, "role": role}, "name")
+			if not name:
+				return None
 			row = frappe.db.get_value("Custom DocPerm", name, list(RIGHTS), as_dict=True)
 			return {k: int(row.get(k) or 0) for k in RIGHTS}
 
-		# FO raises Manufacturing User to the full MR lifecycle (Form Order)
+		def flags_row(doctype, role):
+			return flags(doctype, role)
+
+		# FO raises Manufacturing User to the full MR lifecycle incl. delete
+		# (FU64: delete=1 mengikuti konvensi native — semua role MR native
+		# punya delete)
 		self.assertEqual(
 			flags("Material Request", "Manufacturing User"),
-			{"read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 1, "amend": 0, "delete": 0, "if_owner": 0},
+			{"read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 1, "amend": 0, "delete": 1, "if_owner": 0},
 		)
-		self.assertEqual(flags("Material Request Item", "Manufacturing User")["create"], 1)
-		# Manufacturing Manager: full MR (previously no row at all)
+		# Manufacturing Manager: full MR sama dengan Manufacturing User
 		self.assertEqual(
 			flags("Material Request", "Manufacturing Manager"),
-			{"read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 1, "amend": 0, "delete": 0, "if_owner": 0},
+			{"read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 1, "amend": 0, "delete": 1, "if_owner": 0},
 		)
-		self.assertEqual(flags("Material Request Item", "Manufacturing Manager")["create"], 1)
-		# Gudang Barang Jadi fulfills via Stock Entry create/submit (FO)
-		self.assertEqual(
-			flags("Stock Entry", ROLE_GUDANG),
-			{"read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 1, "amend": 0, "delete": 0, "if_owner": 0},
-		)
+		# FU64: Stock Entry & Material Request Item TANPA Custom DocPerm —
+		# SE kembali ke set native 4 role; MR Item child sepenuhnya
+		# parent-governed (baris custom lama tidak pernah berpengaruh).
+		self.assertIsNone(flags_row("Stock Entry", ROLE_GUDANG))
+		self.assertIsNone(flags_row("Material Request Item", ROLE_GUDANG))
+		self.assertIsNone(flags_row("Material Request Item", "Manufacturing User"))
+		self.assertIsNone(flags_row("Material Request Item", "Manufacturing Manager"))
 		# FU48c: gudang menghapus DRAFT MR-nya di Desk. if_owner sengaja 0 —
 		# terbukti merusak scope baca gudang (flag berlaku satu baris penuh;
 		# lihat komentar DOCPERM_MATRIX di upgrade.py)
@@ -366,7 +375,7 @@ class TestFormOrder(IntegrationTestCase):
 
 	def test_fo_gudang_cannot_create_produksi_cannot_fulfill(self):
 		self._set_route()
-		gudang = _make_user("gd", ROLE_GUDANG)
+		gudang = _make_user("gd", [ROLE_GUDANG, "Stock User"])
 		frappe.set_user(gudang)
 		try:
 			with self.assertRaises(frappe.PermissionError):
@@ -381,7 +390,7 @@ class TestFormOrder(IntegrationTestCase):
 		prod = _make_user("prod", "Manufacturing User")
 		prod2 = _make_user("prod2", "Manufacturing User")
 		manager = _make_user("mgr", "Manufacturing Manager")
-		gudang = _make_user("gd", ROLE_GUDANG)
+		gudang = _make_user("gd", [ROLE_GUDANG, "Stock User"])
 
 		err_before = frappe.db.count("Error Log", {"method": SYNC_ERROR_TITLE})
 		frappe.set_user(prod)
@@ -472,7 +481,7 @@ class TestFormOrder(IntegrationTestCase):
 		finally:
 			frappe.set_user("Administrator")
 		self._receipt(qty=5)
-		gudang = _make_user("gd", ROLE_GUDANG)
+		gudang = _make_user("gd", [ROLE_GUDANG, "Stock User"])
 		frappe.set_user(gudang)
 		try:
 			form_order.fulfill_form_order(mr_name)
@@ -488,7 +497,7 @@ class TestFormOrder(IntegrationTestCase):
 	def test_fo_fulfill_moves_stock_once(self):
 		self._set_route()
 		prod = _make_user("prod", "Manufacturing User")
-		gudang = _make_user("gd", ROLE_GUDANG)
+		gudang = _make_user("gd", [ROLE_GUDANG, "Stock User"])
 
 		# seluruh class berbagi SATU transaksi (pola suite handover) — bin
 		# ditegaskan DELTA terhadap kondisi awal test ini, bukan nilai absolut

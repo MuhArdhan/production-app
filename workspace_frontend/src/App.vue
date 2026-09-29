@@ -44,10 +44,16 @@ const foCreate = computed(() => hash.value === '#/form-order/baru')
 // 2026-09-14): visibilitas menu tidak boleh bergantung pada flag asinkron
 // (dulu menyebabkan menu "kedip/hilang" sebelum/saat gagal load board); isi
 // halaman tetap difilter izin di server.
-const isGudangOnly = computed(() =>
-  !!handoverBoard.roles.is_gudang && !handoverBoard.roles.is_produksi
+// FU64: kombinasi role dinilai sebagai union — manager + stock BUKAN
+// gudang-only (dulu menu Pengaturan tersembunyi untuk kombinasi itu), dan
+// Pengaturan mengikuti kapabilitas server `can_settings` (write
+// Manufacturing Settings — native: Manufacturing Manager), bukan tebakan
+// nama role di UI.
+const isGudangOnly = computed(
+  () => !!handoverBoard.roles.is_gudang &&
+    !(handoverBoard.roles.is_produksi || handoverBoard.roles.is_manajer_produksi)
 )
-const canSettings = computed(() => !isGudangOnly.value)
+const canSettings = computed(() => !!handoverBoard.roles.can_settings)
 // FO 2026-09-18: menu Form Order hanya produksi/manager. Default TERSEMBUNYI
 // sampai role termuat (flag server `is_manajer_produksi`): pihak yang TIDAK
 // berhak tidak pernah melihatnya; produksi melihatnya setelah papan termuat
