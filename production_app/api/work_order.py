@@ -282,13 +282,28 @@ def _handover_enrich(rows):
 
 
 def _enrich_units(rows):
-	"""Resolve the warehouse display UOM separately from stored stock quantities."""
+	"""Resolve the warehouse display UOM separately from stored stock quantities.
+
+	FU65: tolerant of a deleted Item master — cancelled handover/WO documents
+	keep their item_code for audit, so historical rows can reference an Item
+	that no longer exists; one dangling reference must not take down the whole
+	board (it starved the SPA role flags, hiding menus for every user)."""
 	items = {}
 	for row in rows:
 		code = row.get("production_item")
 		if code not in items:
-			items[code] = frappe.get_cached_doc("Item", code)
+			try:
+				items[code] = frappe.get_cached_doc("Item", code)
+			except frappe.DoesNotExistError:
+				items[code] = None
 		item = items[code]
+		if item is None:
+			row["stock_uom"] = None
+			row["display_uom"] = row.get("custom_uom")
+			row["display_conversion_factor"] = None
+			row["stock_uom_whole_number"] = False
+			row["uom_warning"] = None
+			continue
 		stock = item.stock_uom
 		# W21: the gudang-owned "Default Inventory UOM" (warehouse_app) is the only
 		# custom source; the legacy production_app "Default UOM" field is retired
@@ -304,7 +319,11 @@ def _enrich_units(rows):
 		if alternate != stock:
 			conversions = item.uoms
 			if item.variant_of:
-				conversions = list(conversions) + list(frappe.get_cached_doc("Item", item.variant_of).uoms)
+				conversions = list(conversions)
+				try:
+					conversions += list(frappe.get_cached_doc("Item", item.variant_of).uoms)
+				except frappe.DoesNotExistError:
+					pass  # template variant force-deleted — item's own rows suffice
 			for conversion in conversions:
 				if conversion.uom == alternate:
 					value = flt(conversion.conversion_factor)

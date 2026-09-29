@@ -29,7 +29,11 @@ from erpnext.stock.doctype.material_request.material_request import (
 )
 
 from production_app.api.handover import handover_board
-from production_app.api.work_order import _warehouse_defaults, warehouse_defaults_save
+from production_app.api.work_order import (
+	_enrich_units,
+	_warehouse_defaults,
+	warehouse_defaults_save,
+)
 
 PREFIX = "T23"
 
@@ -1024,3 +1028,46 @@ class TestHandoverBoard(IntegrationTestCase):
 			warehouse_defaults_save(handover_warehouse=None)
 			frappe.set_user("Administrator")
 			self.assertIsNone(handover_board()["target_warehouse"])
+
+	# ------------------------------------------- 8. deleted Item master (FU65)
+
+	def test_fu65_dangling_item_keeps_the_board_alive(self):
+		"""FU65: a cancelled request keeps its item_code for audit; when the
+		Item master is deleted afterwards, the board must degrade that ONE row
+		instead of failing the whole API — a board failure starved the SPA role
+		flags and hid the Form Order/Pengaturan menus for every user."""
+		suffix = random_string(6).upper()
+		fg = _make_item(f"{PREFIX}-GONE-{suffix}", self.group, self.uom, batch=False)
+		bom = self._make_bom(fg)
+		wo = self._make_wo(bom, 1, fg, "1")
+		mr = self._make_mr(wo, 3)
+		mr.cancel()
+		# simulate the admin deletion (cancelled docs never block it) without a
+		# cascade teardown: raw update mirrors the exact dirty-data shape
+		row_name = frappe.get_value("Material Request Item", {"parent": mr.name}, "name")
+		frappe.db.set_value(
+			"Material Request Item", row_name, "item_code", f"{PREFIX}-DELETED-{suffix}"
+		)
+		board = handover_board()  # must not raise
+		self.assertIn("roles", board)
+		self.assertIn("is_produksi", board["roles"])
+		self.assertIn("can_settings", board["roles"])
+		req = self._req(board, mr.name)
+		self.assertEqual(req["flag"], "cancelled")
+		# satuan tampil masih hidup dari snapshot baris MR; konversi display
+		# didegradasi (tanpa master) dan qtyInPack jatuh ke fallback 1
+		self.assertEqual(req["stock_uom"], self.uom)
+		self.assertIsNone(req["display_uom"])
+		self.assertEqual(req["qty_in_pack"], 1.0)
+
+	def test_fu65_enrich_units_tolerates_deleted_item(self):
+		"""Unit contract for the other callers (WO list, wo_detail, label)."""
+		row = frappe._dict(
+			production_item=f"{PREFIX}-MISSING-{random_string(4).upper()}", custom_uom="Gram"
+		)
+		_enrich_units([row])
+		self.assertIsNone(row.stock_uom)
+		self.assertEqual(row.display_uom, "Gram")
+		self.assertIsNone(row.display_conversion_factor)
+		self.assertFalse(row.stock_uom_whole_number)
+		self.assertIsNone(row.uom_warning)
