@@ -1241,11 +1241,30 @@ def snapshot_form_order():
 
 
 def ensure_form_order_fields():
-	"""Marker Form Order di Material Request. Idempoten (converge 'unchanged')."""
+	"""Marker Form Order di Material Request. Idempoten (converge 'unchanged').
+	Custom_note (catatan FO) ikut dijamin — dibaca _orders tapi tidak pernah
+	di-ensure sebelumnya (warisan site-surgery manual di prod) sehingga site
+	fresh meledak AttributeError saat daftar Form Order. CREATE-ONLY: definisi
+	milik site eksisting tidak pernah disentuh."""
 	out = []
 	for spec in FO_MR_FIELDS:
 		action, _name = _upsert_field("Material Request", spec)
 		out.append(f"Material Request.{spec['fieldname']}: {action}")
+	if frappe.db.get_value("Custom Field", {"dt": "Material Request", "fieldname": "custom_note"}, "name"):
+		# create-only: definisi milik site eksisting tidak pernah disentuh,
+		# tapi konvensi laporan tetap "unchanged" (kontrak idempotensi apply).
+		out.append("Material Request.custom_note: unchanged")
+	else:
+		doc = frappe.get_doc({
+			"doctype": "Custom Field",
+			"dt": "Material Request",
+			"fieldname": "custom_note",
+			"label": "Catatan",
+			"fieldtype": "Data",
+			"insert_after": "custom_is_form_order",
+		})
+		doc.insert()
+		out.append("Material Request.custom_note: created")
 	frappe.clear_cache(doctype="Material Request")
 	return out
 
