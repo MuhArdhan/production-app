@@ -1,4 +1,4 @@
-// FU62 — Wizard "Tambah Item" untuk form Production Plan (Assembly Items /
+// FU62 — Wizard "Tambah Plan" untuk form Production Plan (Assembly Items /
 // po_items). Dipindah dari Client Script `ProductionPlanModal` (4 langkah)
 // menjadi JS bundel app via hooks.doctype_js: 2 langkah, Bahasa Indonesia,
 // dan bisa input beberapa item dalam satu sesi.
@@ -23,7 +23,7 @@
 	frappe.ui.form.on("Production Plan", {
 		refresh(frm) {
 			if (frm.doc.docstatus !== 0 || frm.doc.status === "Closed") return;
-			frm.add_custom_button(__("Tambah Item"), () => show_item_step(frm)).addClass("btn-primary");
+			frm.add_custom_button(__("Tambah Plan"), () => show_item_step(frm)).addClass("btn-primary");
 		},
 	});
 
@@ -54,7 +54,7 @@
 		let programmatic = {};
 
 		const d = new frappe.ui.Dialog({
-			title: __("Tambah Item — 1/2: Item & Qty"),
+			title: __("Tambah Plan — 1/2: Item & Qty"),
 			fields: [
 				{ fieldtype: "Section Break", label: __("Item") },
 				{
@@ -300,7 +300,7 @@
 		const mode = read_last_mode();
 
 		const d = new frappe.ui.Dialog({
-			title: __("Tambah Item — 2/2: Alokasi Work Order"),
+			title: __("Tambah Plan — 2/2: Alokasi Work Order"),
 			fields: [
 				{ fieldtype: "Section Break", label: __("Item Terpilih") },
 				{ fieldtype: "HTML", fieldname: "item_overview" },
@@ -322,7 +322,7 @@
 				{ fieldtype: "Section Break", label: __("Preview Alokasi") },
 				{ fieldtype: "HTML", fieldname: "preview" },
 			],
-			primary_action_label: __("✓ Tambah ke Assembly Items"),
+			primary_action_label: __("Tambah ke Assembly Items"),
 			secondary_action_label: __("← Kembali"),
 			primary_action: () => apply_rows(false),
 			secondary_action: () => {
@@ -339,7 +339,7 @@
 		d.$wrapper
 			.find(".modal-footer")
 			.prepend(
-				$(`<button class="btn btn-default">${__("＋ Tambah & Input Lagi")}</button>`).on(
+				$(`<button class="btn btn-default">${__("Tambah & Input Lagi")}</button>`).on(
 					"click",
 					() => apply_rows(true)
 				)
@@ -407,8 +407,8 @@
 		function update_mode_desc(mode) {
 			const desc =
 				mode === MODE_TOTAL
-					? __("ℹ️ <b>Total dibagi rata:</b> qty dibagi rata ke semua WO; sisa pembagian masuk baris terakhir.")
-					: __("ℹ️ <b>Qty per Work Order:</b> setiap WO dibuat dengan qty input penuh di atas.");
+					? __("<b>Total dibagi rata:</b> qty dibagi rata ke semua WO; sisa pembagian masuk baris terakhir.")
+					: __("<b>Qty per Work Order:</b> setiap WO dibuat dengan qty input penuh di atas.");
 			d.fields_dict.mode_desc.$wrapper.html(`<div class="text-muted small">${desc}</div>`);
 		}
 
@@ -469,12 +469,12 @@
 			const notes = [];
 			if (num_wo > WO_SOFT_LIMIT) {
 				notes.push(
-					`<div class="text-warning small">⚠ ${__("Jumlah Work Order besar ({0}) — pastikan bukan salah ketik.", [num_wo])}</div>`
+					`<div class="text-warning small">${__("Jumlah Work Order besar ({0}) — pastikan bukan salah ketik.", [num_wo])}</div>`
 				);
 			}
 			if (is_fractional) {
 				notes.push(
-					`<div class="text-warning small">⚠ ${__("Qty per Work Order tidak bulat dalam {0} — pastikan memang dimaksudkan.", [item.stock_uom || __("stock UOM")])}</div>`
+					`<div class="text-warning small">${__("Qty per Work Order tidak bulat dalam {0} — pastikan memang dimaksudkan.", [item.stock_uom || __("stock UOM")])}</div>`
 				);
 			}
 
@@ -539,7 +539,7 @@
 			}
 			msg += `<br>${__("Total: <b>{0} {1}</b>", [format_number(alloc.total_stock), item.stock_uom || __("stock UOM")])}`;
 			if (dup_count > 0) {
-				msg += `<br><br>⚠ ${__(
+				msg += `<br><br>${__(
 					"Kombinasi item + BOM ini sudah ada {0} baris di tabel — baris baru tetap ditambahkan.",
 					[dup_count]
 				)}`;
@@ -564,7 +564,7 @@
 
 				save_last_mode(mode);
 				frappe.show_alert({
-					message: __("✓ {0} baris ditambahkan — jangan lupa Simpan.", [num_wo]),
+					message: __("{0} baris ditambahkan — jangan lupa Simpan.", [num_wo]),
 					indicator: "green",
 				});
 				d.hide();
