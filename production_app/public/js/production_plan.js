@@ -53,6 +53,11 @@
 		// nilai yang diisikan lewat fill() dicatat di sini dan dilewati sekali.
 		let programmatic = {};
 
+		// style dialog (max-height + scroll modal-body) harus ada sejak
+		// langkah 1 — kalau hanya di langkah 2, header dialog terpotong
+		// di atas viewport pada layar pendek (720px)
+		ensure_segmented_style();
+
 		const d = new frappe.ui.Dialog({
 			title: __("Tambah Plan — 1/2: Item & Qty"),
 			fields: [
@@ -127,6 +132,14 @@
 		});
 
 		d.show();
+		// modal-body harus bisa scroll di layar pendek, dan transisi
+		// transform .modal-dialog harus dimatikan: di sebagian webview
+		// transisinya nyangkut di translateY(-15%) sehingga header dialog
+		// terpotong di atas viewport (720px)
+		d.$wrapper
+			.find(".modal-dialog")
+			.addClass("pp-wizard-dialog")
+			.css({ transition: "none", transform: "none" });
 		d.fields_dict.qty_in_uom.$input.on("input change", update_summary);
 
 		if (prefill) {
@@ -332,7 +345,10 @@
 		});
 
 		d.show();
-		d.$wrapper.find(".modal-dialog").addClass("pp-wizard-dialog");
+		d.$wrapper
+			.find(".modal-dialog")
+			.addClass("pp-wizard-dialog")
+			.css({ transition: "none", transform: "none" });
 
 		// Tombol ketiga (di luar primary/secondary bawaan Dialog): apply lalu
 		// lanjut input item berikutnya tanpa menutup alur.
