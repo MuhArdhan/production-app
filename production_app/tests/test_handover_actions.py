@@ -725,22 +725,17 @@ class TestHandoverActions(IntegrationTestCase):
 		self._assert_zero_write_rejection(wo, dict(box_1=2, box_1_qty=2), "Pack utuh")
 
 	def test_t35_box_validation_rejects_with_zero_writes(self):
-		"""Every box/Pack validation failure throws an Indonesian error and
-		writes NOTHING: no Material Request row, unchanged WO summary."""
+		"""Every LEGACY box/Pack validation failure throws an Indonesian error
+		and writes NOTHING: no Material Request row, unchanged WO summary.
+		FU71: omitting the payload ENTIRELY (box_1 is None) is now the qty-only
+		mode and succeeds (see test_fu71_qty_only_create_request_*); a blank or
+		partial legacy payload stays on the old path and is still rejected."""
 		wo, _ = self._lot_ready(100)  # expected 20 Pack (factor 5)
 		valid = dict(box_1=10, box_1_qty=20, box_2=0, box_2_qty=0)
 
-		# old cached client: no box payload at all
-		before = self._summary(wo.name)
-		frappe.set_user(self.gudang)
-		try:
-			with self.assertRaises(frappe.ValidationError) as ctx:
-				create_request(wo.name)
-			self.assertIn("Box 1", str(ctx.exception))
-		finally:
-			frappe.set_user("Administrator")
-		self.assertEqual(self._bound_mr_count(wo.name), 0)
-		self.assertEqual(self._summary(wo.name), before)
+		# blank Box 1 kg and a half-payload (kg 0 with a count) stay rejections
+		self._assert_zero_write_rejection(wo, dict(box_1=""), "Box 1")
+		self._assert_zero_write_rejection(wo, dict(box_1=0, box_1_qty=5), "Box 1")
 
 		# Box 1 kg <= 0 / Pack <= 0
 		self._assert_zero_write_rejection(wo, dict(valid, box_1=0), "Box 1")
@@ -1904,3 +1899,197 @@ class TestHandoverActions(IntegrationTestCase):
 		self.assertEqual(summary.custom_handover_material_request, mr_sent)
 		self.assertEqual(summary.custom_handover_status, "Terkirim")
 		self.assertIsNone(self._summary(wo2.name).custom_handover_material_request)
+
+	# ---------------- FU71. qty-only contract (box arguments omitted entirely)
+
+	def test_fu71_qty_only_create_request_zero_boxes_full_guards(self):
+		"""FU71: a caller that omits EVERY box argument (the W30 warehouse_app
+		caller sends only {work_order}) succeeds in qty-only mode: the MR is
+		the identical submitted full-qty Material Transfer, the WO summary
+		carries the Link with ALL six box fields 0, and the response/board show
+		no boxes — while the duplicate guard still blocks a second no-box call
+		with zero writes."""
+		fg, (wo,) = self._group_ready(100)  # batchless, factor 5: 100 -> 20 Pack
+
+		frappe.set_user(self.gudang)
+		try:
+			result = create_request(wo.name)
+			# a second qty-only call hits the active-request guard, zero writes
+			before = self._summary(wo.name)
+			with self.assertRaises(frappe.ValidationError) as ctx:
+				create_request(wo.name)
+			self.assertIn("sudah punya permintaan aktif", str(ctx.exception))
+		finally:
+			frappe.set_user("Administrator")
+		self.assertEqual(self._bound_mr_count(wo.name), 1)
+		self.assertEqual(self._summary(wo.name), before)
+
+		self.assertTrue(result["ok"])
+		self.assertEqual(result["expected_unit_count"], 20)
+		self.assertEqual(result["unit"], "Pack")
+		self.assertEqual(
+			(result["box_1"], result["box_1_qty"], result["box_2"],
+			 result["box_2_qty"], result["box_3"], result["box_3_qty"]),
+			(0, 0, 0, 0, 0, 0),
+		)
+		produced = flt(frappe.db.get_value("Work Order", wo.name, "produced_qty"))
+		mr = frappe.get_doc("Material Request", result["material_request"])
+		self.assertEqual(mr.docstatus, 1)
+		self.assertEqual(mr.material_request_type, "Material Transfer")
+		self.assertEqual(flt(mr.items[0].qty), produced)  # R3: full qty
+		self.assertEqual(mr.items[0].stock_uom, self.uom)
+		self.assertEqual(mr.items[0].uom, mr.items[0].stock_uom)
+		self.assertEqual(mr.items[0].custom_work_order, wo.name)
+		self.assertFalse(mr.custom_handover_box_plan)
+
+		summary = self._summary(wo.name)
+		self.assertEqual(summary.custom_handover_material_request, mr.name)
+		self.assertEqual(summary.custom_handover_status, "Diminta Gudang")
+		self.assertEqual(
+			(flt(summary.custom_box_1), summary.custom_box_1_qty,
+			 flt(summary.custom_box_2), summary.custom_box_2_qty,
+			 flt(summary.custom_box_3), summary.custom_box_3_qty),
+			(0, 0, 0, 0, 0, 0),
+		)
+
+		# the board request row shows lane request with NO boxes at all
+		row = self._req(result["board"], mr.name)
+		self.assertEqual(row["lane"], "request")
+		self.assertEqual(row["boxes"], [])  # the 0 kg values are truthiness-filtered
+		self.assertIsNone(row["box_1"])  # summary 0 maps to the falsy None
+		self.assertIsNone(row["box_1_qty"])
+
+	def test_fu71_qty_only_partial_payload_role_and_fractional_guards(self):
+		"""FU71 edges: a PARTIAL payload (box_2 filled, box_1 omitted) is still
+		qty-only and box_2 is ignored (never half-parsed); Produksi is denied
+		before any write; a produced qty forming no whole Pack is still a
+		zero-write qty-only rejection."""
+		fg, (wo,) = self._group_ready(60)  # expected 12 Pack
+
+		frappe.set_user(self.prod)
+		try:
+			with self.assertRaises(frappe.PermissionError):
+				create_request(wo.name)
+		finally:
+			frappe.set_user("Administrator")
+		self.assertEqual(self._bound_mr_count(wo.name), 0)
+
+		frappe.set_user(self.gudang)
+		try:
+			result = create_request(wo.name, box_2=5, box_2_qty=5)
+		finally:
+			frappe.set_user("Administrator")
+		self.assertTrue(result["ok"])
+		summary = self._summary(wo.name)
+		self.assertEqual(summary.custom_handover_material_request, result["material_request"])
+		self.assertEqual((flt(summary.custom_box_2), summary.custom_box_2_qty), (0, 0))
+
+		# fractional output: 7 pcs at factor 5 = 1.4 Pack -> qty-only refuses
+		fg2, (wo2,) = self._group_ready(7)
+		self._assert_zero_write_rejection(wo2, dict(box_1=None), "tidak membentuk")
+
+	def test_fu71_qty_only_lot_short_rejected_zero_writes(self):
+		"""FU71: the lot-availability guard sits directly below the qty-only
+		branch and stays authoritative — a drained batchless pool rejects the
+		full-qty request with the diminta/tersedia message and ZERO writes
+		(staging mirrors t31: plain desk transfer out of the pool)."""
+		fg, (wo,) = self._group_ready(60)  # fresh item: the pool is exactly 60
+		pool = flt(_item_stock(fg, self.cold_wh))
+		self.assertGreaterEqual(pool, 60)
+		se = frappe.get_doc(
+			{
+				"doctype": "Stock Entry",
+				"stock_entry_type": "Material Transfer",
+				"company": self.company,
+				"items": [
+					{
+						"item_code": fg,
+						"qty": pool - 50,
+						"basic_rate": 10,
+						"s_warehouse": self.cold_wh,
+						"t_warehouse": self.target_wh,
+						"use_serial_batch_fields": 0,
+					}
+				],
+			}
+		)
+		self._pin_posting(se, "11:00:00")
+		se.insert()
+		se.submit()
+		self.assertEqual(flt(_item_stock(fg, self.cold_wh)), 50)
+
+		self._assert_zero_write_rejection(wo, dict(box_1=None), "tersedia")
+
+	def test_fu71_qty_only_group_request_plan_cancel_and_legacy_rejection(self):
+		"""FU71 group: create_group_request WITHOUT the boxes argument runs
+		qty-only — the Handover Box Plan still exists with ONE zero-kg row (the
+		group pill + cancel-group mechanism ride its Link), every member MR is
+		the identical submitted full-qty transfer linked to the plan, and the
+		group cancel still works; the legacy EMPTY-LIST payload is STILL a
+		'Minimal 1 box' rejection."""
+		fg, (wo1, wo2) = self._group_ready(60, 40)  # 12 + 8 = 20 Pack
+
+		frappe.set_user(self.gudang)
+		try:
+			result = create_group_request([wo1.name, wo2.name])  # boxes omitted
+		finally:
+			frappe.set_user("Administrator")
+
+		self.assertTrue(result["ok"])
+		self.assertTrue(result["box_plan"].startswith("HBP-"))
+		self.assertEqual(result["expected_unit_count"], 20)
+		plan = frappe.get_doc("Handover Box Plan", result["box_plan"])
+		self.assertEqual(plan.item_code, fg)
+		self.assertEqual([(flt(b.kg), b.qty) for b in plan.boxes], [(0, 20)])
+
+		self.assertEqual(len(result["material_requests"]), 2)
+		wo_by_mr = {
+			frappe.db.get_value("Material Request Item", {"parent": n}, "custom_work_order"): n
+			for n in result["material_requests"]
+		}
+		self.assertEqual(set(wo_by_mr), {wo1.name, wo2.name})
+		for wo, mr_name in ((wo1, wo_by_mr[wo1.name]), (wo2, wo_by_mr[wo2.name])):
+			mr = frappe.get_doc("Material Request", mr_name)
+			produced = flt(frappe.db.get_value("Work Order", wo.name, "produced_qty"))
+			self.assertEqual(mr.docstatus, 1)
+			self.assertEqual(mr.material_request_type, "Material Transfer")
+			self.assertEqual(mr.custom_handover_box_plan, plan.name)
+			self.assertEqual(flt(mr.items[0].qty), produced)  # R3: full qty
+			summary = self._summary(wo.name)
+			self.assertEqual(summary.custom_handover_material_request, mr_name)
+			self.assertEqual(summary.custom_handover_status, "Diminta Gudang")
+			self.assertEqual(
+				(flt(summary.custom_box_1), summary.custom_box_1_qty,
+				 flt(summary.custom_box_2), summary.custom_box_2_qty,
+				 flt(summary.custom_box_3), summary.custom_box_3_qty),
+				(0, 0, 0, 0, 0, 0),
+			)
+
+		board = handover_board()
+		for mr_name in result["material_requests"]:
+			row = self._req(board, mr_name)
+			self.assertEqual(row["lane"], "request")
+			self.assertEqual(row["boxes"], [])
+			self.assertEqual(row["box_plan"], plan.name)
+			self.assertEqual(row["group_boxes"], [{"kg": 0, "qty": 20}])
+			self.assertEqual(row["group_size"], 2)
+
+		# the group cancel mechanism survives qty-only (it rides the plan)
+		frappe.set_user(self.gudang)
+		try:
+			done = cancel_group_request(result["box_plan"])
+		finally:
+			frappe.set_user("Administrator")
+		self.assertTrue(done["ok"])
+		for mr_name in result["material_requests"]:
+			self.assertEqual(frappe.db.get_value("Material Request", mr_name, "docstatus"), 2)
+
+		# legacy contract: an EXPLICIT empty box list is still rejected
+		fg2, (wo3, wo4) = self._group_ready(60, 40)
+		frappe.set_user(self.gudang)
+		try:
+			with self.assertRaises(frappe.ValidationError) as ctx:
+				create_group_request(json.dumps([wo3.name, wo4.name]), [])
+		finally:
+			frappe.set_user("Administrator")
+		self.assertIn("Minimal 1 box", str(ctx.exception))

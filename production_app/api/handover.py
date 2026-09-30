@@ -1121,6 +1121,17 @@ def _target_warehouse_or_throw(company=None):
 # would let exactly that value through to an out-of-range db write.
 MAX_BOX_KG = Decimal("999999999999.999999")
 
+# FU71: the qty-only WO summary block — shared read-only (the only consumer,
+# _insert_submitted_handover_mr, splats it via **box_values and never mutates)
+ZERO_BOXES = {
+    "custom_box_1": 0,
+    "custom_box_1_qty": 0,
+    "custom_box_2": 0,
+    "custom_box_2_qty": 0,
+    "custom_box_3": 0,
+    "custom_box_3_qty": 0,
+}
+
 
 def _finite_kg(value, label, allow_blank=False):
     """T35 box kg parser: a finite, non-negative number is REQUIRED for Box 1;
@@ -1257,6 +1268,13 @@ def create_request(work_order, box_1=None, box_1_qty=None, box_2=0, box_2_qty=0,
     warehouse (R2). One ACTIVE (unshipped, unstopped) request per Work Order;
     a duplicate throws.
 
+    FU71 qty-only mode: a caller that omits the box payload ENTIRELY
+    (box_1 is None — the W30 warehouse_app caller sends only {work_order})
+    skips the box parsing/allocation and requests on the produced counts
+    alone; the WO summary box block is written as all zeros. Only a full
+    omission triggers it — a blank ("") or zero box_1 stays on the legacy
+    path and is rejected there.
+
     T35: ALL box/count validation happens under the WO row lock BEFORE any
     write; the native MR is inserted + submitted WITHOUT any box/postpacking
     custom field, then the Work Order summary (Link + box values) is
@@ -1305,18 +1323,33 @@ def create_request(work_order, box_1=None, box_1_qty=None, box_2=0, box_2_qty=0,
             _("Work Order {0} sudah punya permintaan aktif ({1}).").format(work_order, link_now)
         )
 
-    # T35 box form: compute + validate EVERYTHING before any write
+    # T35 box form: compute + validate EVERYTHING before any write. FU71:
+    # box_1 is None (payload omitted entirely) is the qty-only mode — the
+    # server-side count guard still runs, only the box parsing/allocation is
+    # skipped and the summary box block is ZERO_BOXES.
     expected_units = _expected_unit_count(wo, lot, amount)
     unit = lot.display_uom or lot.stock_uom
-    kg_1 = _finite_kg(box_1, "Box 1")
-    qtys_1 = _whole_count(box_1_qty, f"Box 1 ({unit})")
-    kg_2 = _finite_kg(box_2, "Box 2", allow_blank=True)
-    qtys_2 = _whole_count(box_2_qty, f"Box 2 ({unit})")
-    kg_3 = _finite_kg(box_3, "Box 3", allow_blank=True)
-    qtys_3 = _whole_count(box_3_qty, f"Box 3 ({unit})")
-    kg_1, qtys_1, kg_2, qtys_2, kg_3, qtys_3 = _validate_box_allocation(
-        kg_1, qtys_1, kg_2, qtys_2, kg_3, qtys_3, expected_units, unit
-    )
+    if box_1 is None:
+        kg_1 = qtys_1 = kg_2 = qtys_2 = kg_3 = qtys_3 = 0
+        box_values = ZERO_BOXES
+    else:
+        kg_1 = _finite_kg(box_1, "Box 1")
+        qtys_1 = _whole_count(box_1_qty, f"Box 1 ({unit})")
+        kg_2 = _finite_kg(box_2, "Box 2", allow_blank=True)
+        qtys_2 = _whole_count(box_2_qty, f"Box 2 ({unit})")
+        kg_3 = _finite_kg(box_3, "Box 3", allow_blank=True)
+        qtys_3 = _whole_count(box_3_qty, f"Box 3 ({unit})")
+        kg_1, qtys_1, kg_2, qtys_2, kg_3, qtys_3 = _validate_box_allocation(
+            kg_1, qtys_1, kg_2, qtys_2, kg_3, qtys_3, expected_units, unit
+        )
+        box_values = {
+            "custom_box_1": kg_1,
+            "custom_box_1_qty": qtys_1,
+            "custom_box_2": kg_2,
+            "custom_box_2_qty": qtys_2,
+            "custom_box_3": kg_3,
+            "custom_box_3_qty": qtys_3,
+        }
 
     stock_uom = lot.stock_uom or frappe.db.get_value("Item", wo.production_item, "stock_uom")
     _enforce_whole_uom(amount, stock_uom, "Qty")
@@ -1332,21 +1365,7 @@ def create_request(work_order, box_1=None, box_1_qty=None, box_2=0, box_2_qty=0,
         )
 
     source = _pool_warehouse(lot)  # setting override, else SE-derived (R2)
-    mr = _insert_submitted_handover_mr(
-        wo,
-        amount,
-        stock_uom,
-        source,
-        target,
-        {
-            "custom_box_1": kg_1,
-            "custom_box_1_qty": qtys_1,
-            "custom_box_2": kg_2,
-            "custom_box_2_qty": qtys_2,
-            "custom_box_3": kg_3,
-            "custom_box_3_qty": qtys_3,
-        },
-    )
+    mr = _insert_submitted_handover_mr(wo, amount, stock_uom, source, target, box_values)
     return {
         "ok": True,
         "material_request": mr.name,
@@ -1443,7 +1462,7 @@ def _json_list(value, label):
 
 @frappe.whitelist()
 @_retry_on_deadlock
-def create_group_request(work_orders, boxes):
+def create_group_request(work_orders, boxes=None):
     """Gudang side: request a GROUP of Work Orders of the SAME item whose
     output was packed into SHARED physical boxes (e.g. 3 boxes hold output
     mixed from 10 WOs — kg is weighed per physical box once, so per-WO-per-box
@@ -1451,6 +1470,13 @@ def create_group_request(work_orders, boxes):
     produced qty each, R3); the group is expressed by one Handover Box Plan
     that every member MR links (custom_handover_box_plan), while the WO
     summary box fields stay 0.
+
+    FU71 qty-only mode: omitting `boxes` ENTIRELY (None — no box payload was
+    sent) requests on the produced counts alone; the plan is STILL created
+    with ONE zero-kg row carrying the whole expected count, because the group
+    pill and the cancel-group mechanism ride the Material Request's
+    custom_handover_box_plan link. An explicit empty list stays on the legacy
+    path and is rejected ("Minimal 1 box").
 
     Contract (mirrors create_request): role gate + every validation under the
     member-WO locks BEFORE any write; hard invariant Σ(box qty) == Σ(expected
@@ -1465,20 +1491,24 @@ def create_group_request(work_orders, boxes):
     wo_names = sorted({str(n).strip() for n in _json_list(work_orders, "Work Orders") if str(n or "").strip()})
     if len(wo_names) < 2:
         frappe.throw(_("Grup serah terima butuh minimal 2 Work Order."))
+    # FU71: boxes omitted ENTIRELY (None) is the qty-only mode — skip the box
+    # parsing loop; an explicit payload (even "" or []) stays on the legacy
+    # path below with its JSON / "Minimal 1 box" rejections.
     box_rows = []
-    for i, box in enumerate(_json_list(boxes, "Box"), 1):
-        # every row is a WEIGHED physical box: no blank allowance here
-        if not isinstance(box, dict):
-            frappe.throw(_("Box {0} harus objek {{kg, qty}}.").format(i))
-        kg = _finite_kg(box.get("kg"), f"Box {i}")
-        if kg <= 0:
-            frappe.throw(_("Box {0}: berat kg harus positif.").format(i))
-        qty = _whole_count(box.get("qty"), f"Box {i}")
-        if qty <= 0:
-            frappe.throw(_("Box {0}: jumlah harus bilangan bulat positif.").format(i))
-        box_rows.append({"kg": kg, "qty": qty})
-    if not box_rows:
-        frappe.throw(_("Minimal 1 box wajib diisi."))
+    if boxes is not None:
+        for i, box in enumerate(_json_list(boxes, "Box"), 1):
+            # every row is a WEIGHED physical box: no blank allowance here
+            if not isinstance(box, dict):
+                frappe.throw(_("Box {0} harus objek {{kg, qty}}.").format(i))
+            kg = _finite_kg(box.get("kg"), f"Box {i}")
+            if kg <= 0:
+                frappe.throw(_("Box {0}: berat kg harus positif.").format(i))
+            qty = _whole_count(box.get("qty"), f"Box {i}")
+            if qty <= 0:
+                frappe.throw(_("Box {0}: jumlah harus bilangan bulat positif.").format(i))
+            box_rows.append({"kg": kg, "qty": qty})
+        if not box_rows:
+            frappe.throw(_("Minimal 1 box wajib diisi."))
 
     # lock every member WO first, sorted-name order (deadlock-safe)
     wos = []
@@ -1543,6 +1573,11 @@ def create_group_request(work_orders, boxes):
         members.append((wo, amount, stock_uom, lot))
         expected_total += expected
 
+    # FU71 qty-only: ONE zero-kg row carrying the whole expected count keeps
+    # the plan (and the group pill / cancel-group riding its Link) alive; the
+    # Σ invariant below then holds trivially.
+    if boxes is None:
+        box_rows = [{"kg": 0, "qty": expected_total}]
     box_total = sum(r["qty"] for r in box_rows)
     if box_total != expected_total:
         frappe.throw(
@@ -1560,18 +1595,10 @@ def create_group_request(work_orders, boxes):
             "boxes": box_rows,
         }
     ).insert()  # session user (in-doctype gudang create perm)
-    zero_boxes = {
-        "custom_box_1": 0,
-        "custom_box_1_qty": 0,
-        "custom_box_2": 0,
-        "custom_box_2_qty": 0,
-        "custom_box_3": 0,
-        "custom_box_3_qty": 0,
-    }
     mr_names = []
     for wo, amount, stock_uom, lot in members:
         mr = _insert_submitted_handover_mr(
-            wo, amount, stock_uom, _pool_warehouse(lot), target, zero_boxes, box_plan=plan.name
+            wo, amount, stock_uom, _pool_warehouse(lot), target, ZERO_BOXES, box_plan=plan.name
         )
         mr_names.append(mr.name)
     return {

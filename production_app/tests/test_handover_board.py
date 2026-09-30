@@ -813,6 +813,35 @@ class TestHandoverBoard(IntegrationTestCase):
 		self.assertEqual((by_mr[mr2.name]["box_1"], by_mr[mr2.name]["box_1_qty"]), (6.5, None))
 		self.assertIsNone(by_mr[mr2.name]["box_2_qty"])
 
+	def test_fu71_qty_only_summary_maps_to_no_boxes_on_board(self):
+		"""FU71: a qty-only WO summary (Link set, ALL six box fields 0) reads on
+		the board request row as NO boxes — the mapping's `or None` turns the
+		stored 0 into the falsy None (box_1 is None, never 0, and the MR's
+		legacy kg cannot leak past a Link that points here), and the truthiness
+		filter empties the `boxes` chip list entirely."""
+		fg = _make_item(f"{PREFIX}-FGQO-{random_string(4).upper()}", self.group, self.uom, batch=False)
+		bom = self._make_bom(fg)
+		wo = self._make_wo(bom, 100, fg, "1")
+		self._transfer(wo)
+		self._manufacture(wo, 100, "10:00:00")
+		mr = self._make_mr(wo, 100)
+		# the doc_events sync claimed the Link on MR submit; write the qty-only
+		# box block directly (no box payload was ever sent for this request)
+		wo.db_set("custom_handover_material_request", mr.name)
+		wo.db_set("custom_box_1", 0)
+		wo.db_set("custom_box_1_qty", 0)
+		wo.db_set("custom_box_2", 0)
+		wo.db_set("custom_box_2_qty", 0)
+		wo.db_set("custom_box_3", 0)
+		wo.db_set("custom_box_3_qty", 0)
+
+		row = self._req(handover_board(), mr.name)
+		self.assertEqual(row["lane"], "request")
+		self.assertEqual(row["work_order"], wo.name)
+		self.assertIsNone(row["box_1"])
+		self.assertIsNone(row["box_1_qty"])
+		self.assertEqual(row["boxes"], [])
+
 	def test_t36_board_single_bulk_seams_no_fan_out(self):
 		"""T36: ONE full board build for MULTIPLE Work Orders hits each bulk
 		seam exactly once — a single (get_available_batches +
