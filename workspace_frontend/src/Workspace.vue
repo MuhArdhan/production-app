@@ -121,7 +121,7 @@ onMounted(() => {
           :href="'#/wo/' + w.id"
           :aria-current="w.id === wo.id ? 'true' : undefined"
         >
-          <span class="wsc-ref mono">{{ w.id }}</span>
+          <span class="wsc-ref">{{ w.id }}</span>
           <span class="wsc-name">{{ w.product }}</span>
           <span class="wsc-sub">Adonan ke {{ w.persiapan.adonanKe ?? '-' }}</span>
         </a>

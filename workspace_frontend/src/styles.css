@@ -778,14 +778,18 @@ textarea.input { height: auto; padding: 8px 10px; }
 .back svg { flex: none; }
 
 /* switcher Work Order: kolom daftar di kiri konten detail (FU68). Tinggi
-   kolom = tinggi konten: nav absolut pada .ws-layout sehingga satu-satunya
-   item in-flow (.ws-main) yang menentukan tinggi baris grid; daftar yang
-   lebih panjang dari konten meluap jadi scroll (scrollbar tipis). */
+   kolom mengikuti konten, dengan minimum setinggi viewport (144px = tepi atas
+   + link Daftar + jarak bawah) supaya kolom terasa memanjang ke bawah —
+   konten yang lebih tinggi tetap menang. Nav absolut pada .ws-layout agar
+   satu-satunya item in-flow (.ws-main) yang menentukan tinggi baris grid;
+   daftar yang lebih panjang meluap jadi scroll (scrollbar tipis).
+   Garis kanan = sekat master-detail. */
 .ws-layout {
   position: relative;
   display: grid;
   grid-template-columns: 292px minmax(0, 1fr);
   gap: 20px;
+  min-height: calc(100vh - 144px);
 }
 .wo-switch {
   position: absolute;
@@ -797,7 +801,8 @@ textarea.input { height: auto; padding: 8px 10px; }
   flex-direction: column;
   gap: 8px;
   overflow-y: auto;
-  padding: 2px 2px 6px;
+  padding: 2px 14px 6px 2px;
+  border-right: 1px solid var(--line);
   scrollbar-width: thin;
 }
 .ws-main { grid-column: 2; grid-row: 1; min-width: 0; }
@@ -826,7 +831,7 @@ textarea.input { height: auto; padding: 8px 10px; }
   text-overflow: ellipsis;
 }
 .wsc-sub { font-size: 11px; color: var(--faint); white-space: nowrap; }
-.wsc-ref { font-size: 10.5px; color: var(--faint); white-space: nowrap; }
+.wsc-ref { font-size: 11px; color: var(--faint); white-space: nowrap; }
 .wsc.on { background: var(--brand-soft); border-color: transparent; }
 .wsc.on .wsc-name { color: var(--brand); }
 .wsc.on .wsc-sub { color: var(--brand); opacity: 0.72; }
@@ -838,7 +843,7 @@ textarea.input { height: auto; padding: 8px 10px; }
 }
 @media (max-width: 820px) {
   /* mobile: kembali strip horizontal seperti pra-FU68 */
-  .ws-layout { display: block; }
+  .ws-layout { display: block; min-height: 0; }
   .wo-switch {
     position: static;
     width: auto;
@@ -846,6 +851,8 @@ textarea.input { height: auto; padding: 8px 10px; }
     overflow-x: auto;
     overflow-y: hidden;
     margin-bottom: 10px;
+    padding: 2px 2px 6px;
+    border-right: none;
     scrollbar-width: none;
   }
   .wo-switch::-webkit-scrollbar { display: none; }
