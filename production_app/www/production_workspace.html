@@ -1,4 +1,23 @@
-<!doctype html>
+{% if guest_login_redirect %}<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Production Workspace</title>
+  <meta name="theme-color" content="#1a56db">
+  <link rel="icon" href="/assets/production_app/images/logo.svg" type="image/svg+xml">
+  <noscript><meta http-equiv="refresh" content="0;url=/login?redirect-to=/production_workspace"></noscript>
+</head>
+<body>
+  <script>
+    // FU67: fragment (#/wo/<id>) tak pernah sampai ke server — redirect ke
+    // login dibuat di sini agar redirect-to memuat hash URL utuh dan setelah
+    // login user kembali ke halaman yang sama, bukan ke daftar.
+    location.replace('/login?redirect-to=' + encodeURIComponent(location.pathname + location.hash));
+  </script>
+</body>
+</html>
+{% else %}<!doctype html>
 <html lang="id">
 <head>
   <meta charset="UTF-8">
@@ -20,3 +39,4 @@
   <script type="module" src="/assets/production_app/workspace/assets/index.js"></script>
 </body>
 </html>
+{% endif %}
