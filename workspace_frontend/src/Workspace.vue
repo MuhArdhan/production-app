@@ -94,12 +94,12 @@ const statusClass = computed(() =>
 const fgQty = computed(() => producedQty(wo.value))
 const plan = computed(() => qtyStack(wo.value.plannedStockQty, wo.value))
 
-// chip WO aktif langsung tercenter di strip switcher saat halaman dibuka
+// WO aktif langsung tercenter di kolom daftar saat halaman dibuka (FU68)
 const switchEl = ref(null)
 onMounted(() => {
   switchEl.value
     ?.querySelector('.wsc.on')
-    ?.scrollIntoView({ inline: 'center', block: 'nearest' })
+    ?.scrollIntoView({ block: 'center', inline: 'nearest' })
 })
 </script>
 
@@ -110,21 +110,25 @@ onMounted(() => {
   <div v-else-if="wo">
     <a class="back" href="#/"><ChevronLeft :size="16" :stroke-width="2" /> Daftar Perintah Kerja</a>
 
-    <nav ref="switchEl" class="wo-switch" aria-label="Pindah Work Order">
-      <a
-        v-for="w in workOrders"
-        :key="w.id"
-        class="wsc"
-        :class="{ on: w.id === wo.id }"
-        :href="'#/wo/' + w.id"
-        :aria-current="w.id === wo.id ? 'true' : undefined"
-      >
-        <span class="wsc-name">{{ w.product }}</span>
-        <span class="wsc-sub">Adonan ke {{ w.persiapan.adonanKe ?? '-' }}</span>
-      </a>
-    </nav>
+    <!-- FU68: daftar WO jadi kolom kiri setinggi konten (scroll); konten di kanan -->
+    <div class="ws-layout">
+      <nav ref="switchEl" class="wo-switch" aria-label="Pindah Work Order">
+        <a
+          v-for="w in workOrders"
+          :key="w.id"
+          class="wsc"
+          :class="{ on: w.id === wo.id }"
+          :href="'#/wo/' + w.id"
+          :aria-current="w.id === wo.id ? 'true' : undefined"
+        >
+          <span class="wsc-ref mono">{{ w.id }}</span>
+          <span class="wsc-name">{{ w.product }}</span>
+          <span class="wsc-sub">Adonan ke {{ w.persiapan.adonanKe ?? '-' }}</span>
+        </a>
+      </nav>
 
-    <header class="panel ws-hero">
+      <div class="ws-main">
+        <header class="panel ws-hero">
       <div class="ws-hero-main">
         <div class="ws-eyebrow">
           <span class="ws-ref mono">{{ wo.id }}</span>
@@ -192,6 +196,8 @@ onMounted(() => {
 
     </fieldset>
     <p v-if="state.pending" role="status">Menyimpan…</p>
+      </div>
+    </div>
   </div>
 
   <div v-else class="empty">
