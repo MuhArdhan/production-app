@@ -502,7 +502,7 @@ def suggestion_preferences_save(enabled=1):
 # --------------------------------------------------------------- T07 prepare
 
 PREP_FIELD_MAP = {
-	"adonan_ke": "custom_adonan_ke",  # Data
+	"adonan_ke": "custom_adonan_ke",  # Int (FU69; dulu Data)
 	"adonan": "custom_adonan",  # Int
 	"jam_adonan": "custom_jam_adonan",  # Time
 	"suhu_adonan": "custom_suhu_adonan",  # Float
@@ -527,7 +527,11 @@ def _validate_prep_values(values):
 				continue
 			cleaned[fieldname] = name  # person's name as text; never cast to number
 		elif key == "adonan_ke":
-			cleaned[fieldname] = str(value)
+			# FU69: Int — nomor urut mulai 1 (selaras input SPA type=number min=1);
+			# cint agar sampah non-angka jatuh ke 0 lalu ditolak di bawah
+			cleaned[fieldname] = cint(value)
+			if cleaned[fieldname] < 1:
+				frappe.throw(_("Adonan ke minimal 1."))
 		elif key in ("adonan", "jumlah_kru"):
 			cleaned[fieldname] = int(value)
 			if cleaned[fieldname] < 0:

@@ -529,7 +529,7 @@ class TestWorkOrderTransactionProof(IntegrationTestCase):
 		self.assertTrue(result["submitted_now"])
 		wo.reload()
 		self.assertEqual(wo.docstatus, 1)
-		self.assertEqual(wo.custom_adonan_ke, "3")
+		self.assertEqual(wo.custom_adonan_ke, 3)  # FU69: Int
 		self.assertEqual(str(wo.custom_jam_adonan), "4:30:00")  # TIME -> timedelta
 		self.assertEqual(flt(wo.custom_suhu_adonan), 28.5)
 		self.assertEqual(wo.custom_nama_penimbang, "Rina Wijaya")  # FU10: free-text name
@@ -1269,7 +1269,7 @@ class TestWorkOrderTransactionProof(IntegrationTestCase):
 		finally:
 			frappe.set_user("Administrator")
 		wo.reload()
-		self.assertEqual(wo.custom_adonan_ke, "1")  # rejection leaves no partial write
+		self.assertEqual(wo.custom_adonan_ke, 1)  # FU69: Int — rejection leaves no partial write
 
 		user.add_roles("Manufacturing Manager")
 		frappe.set_user(user.name)
@@ -1279,7 +1279,7 @@ class TestWorkOrderTransactionProof(IntegrationTestCase):
 		finally:
 			frappe.set_user("Administrator")
 		wo.reload()
-		self.assertEqual(wo.custom_adonan_ke, "2")
+		self.assertEqual(wo.custom_adonan_ke, 2)  # FU69: Int
 		self.assertEqual(flt(wo.custom_suhu_adonan), 30.0)
 		self.assertEqual(wo.status, "Completed")
 		# exactly the transfer + manufacture from the normal flow — no new documents

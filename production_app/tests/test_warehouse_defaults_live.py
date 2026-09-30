@@ -435,7 +435,7 @@ class TestWarehouseDefaultsLive(IntegrationTestCase):
 		)
 		# hanya kolom gudang yang berubah — Data Adonan utuh
 		self.assertEqual(header.source_warehouse, self.src_new)
-		self.assertEqual(header.custom_adonan_ke, "3")
+		self.assertEqual(header.custom_adonan_ke, 3)  # FU69: Int
 		self.assertEqual(header.custom_leader_produksi, "Budi FU58")
 		self.assertEqual(self._rows(wo.name)[self.rm1], self.src_new)
 

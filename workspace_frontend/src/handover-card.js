@@ -5,7 +5,7 @@ export function handoverCard(values) {
     workOrder: values.workOrder || '',
     document: values.document || '',
     batch: values.batch || '',
-    adonan: values.adonan == null ? '' : String(values.adonan),
+    adonan: values.adonan ? String(values.adonan) : '', // FU69: Int — 0 = kosong
     quantityLabel: values.quantityLabel || '',
     quantity: qtyMain(values.quantity, values.units),
     timestampLabel: values.timestampLabel || '',

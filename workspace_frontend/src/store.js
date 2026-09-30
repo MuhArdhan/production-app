@@ -147,7 +147,7 @@ export function mapDetail(d) {
     // undefined.penimbang melempar TypeError dan panel form hilang total.
     suggestionSources: d.suggestion_sources || {},
     persiapan: {
-      adonanKe: d.custom_adonan_ke ?? null,
+      adonanKe: d.custom_adonan_ke || null, // FU69: Int — 0 = kosong
       jamAdonan: hhmm(d.custom_jam_adonan),
       suhuAdonan: d.custom_suhu_adonan ?? null,
       namaPenimbang: d.custom_nama_penimbang || '',

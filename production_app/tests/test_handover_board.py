@@ -378,7 +378,7 @@ class TestHandoverBoard(IntegrationTestCase):
 		self.assertEqual(lot1["batch"], self._lot_in_cold(wo1))
 		self.assertEqual(lot1["item_code"], self.fg3)
 		self.assertEqual(lot1["item_name"], self.fg3_name)
-		self.assertEqual(lot1["adonan_ke"], "1")
+		self.assertEqual(lot1["adonan_ke"], 1)  # FU69: Int
 		self.assertEqual(flt(lot1["qty"]), 100)  # WO target qty
 		# T31 (R7): the WO's finished-goods qty + latest Manufacture posting
 		self.assertEqual(flt(lot1["produced_qty"]), 100)

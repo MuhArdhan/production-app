@@ -306,7 +306,7 @@ def _wo_lot_rows(wo_names=None):
 				"custom_uom": None,
 				"qty": flt(w.qty),
 				"produced_qty": flt(w.produced_qty),
-				"adonan_ke": w.custom_adonan_ke,
+				"adonan_ke": w.custom_adonan_ke or None,  # FU69: 0 = kosong
 				"warehouse": cur["warehouse"] or w.fg_warehouse,
 				"entered_at": str(cur["entered_at"]),
 				"completed_at": cur["completed_at"],

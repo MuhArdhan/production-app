@@ -33,7 +33,7 @@ WORKSPACE_FIELDS = [
 	_field("custom_uom", "UOM", "Link", "custom_qty_in_uom", options="UOM", hidden=1, allow_on_submit=1),
 	_field("custom_conversion_factor", "Conversion Factor", "Float", "custom_uom", read_only=1, hidden=1),
 	_field("custom_column_break_fdsxk", "", "Column Break", "custom_conversion_factor"),
-	_field("custom_adonan_ke", "Adonan ke", "Data", "custom_column_break_fdsxk", allow_on_submit=1),
+	_field("custom_adonan_ke", "Adonan ke", "Int", "custom_column_break_fdsxk", allow_on_submit=1),
 	_field("custom_adonan", "Adonan", "Int", "custom_adonan_ke", hidden=1, allow_on_submit=1),
 	_field("custom_jam_adonan", "Jam Adonan", "Time", "custom_adonan", allow_on_submit=1),
 	_field("custom_suhu_adonan", "Suhu Adonan", "Float", "custom_jam_adonan", allow_on_submit=1),
@@ -1393,6 +1393,31 @@ def snapshot_mr_delete_perm():
 	return MR_DELETE_SNAPSHOT
 
 
+def reconcile_adonan_ke_int():
+	"""FU69: "Adonan ke" dari Data → Int — semantiknya nomor urut (input SPA
+	sudah type=number min=1, validasi server >= 1). Idempoten: situs yang masih
+	Data di-update fieldtype-nya lalu kolomnya di-alter via updatedb; saat
+	perubahan kedua situs tidak punya nilai terisi, jadi tanpa konversi data."""
+	name = frappe.db.get_value(
+		"Custom Field", {"dt": DOCTYPE, "fieldname": "custom_adonan_ke"}, "name"
+	)
+	if not name:
+		return {"custom_adonan_ke": "field absent: skipped"}
+	if frappe.db.get_value("Custom Field", name, "fieldtype") == "Int":
+		return {"custom_adonan_ke": "unchanged"}
+	frappe.db.set_value("Custom Field", name, "fieldtype", "Int")
+	frappe.clear_cache(doctype=DOCTYPE)  # meta segar sebelum updatedb membaca tipe
+	# kosong/sampah diisi 0 dulu: '' maupun NULL → int NOT NULL kena 1265
+	# (data truncated) di strict mode MariaDB; 0 = kosong sesuai normalisasi
+	# UI (list "Adonan ke -", kartu papan tanpa "Adonan ke 0")
+	frappe.db.sql(
+		f"UPDATE `tab{DOCTYPE}` SET `custom_adonan_ke` = 0 "
+		"WHERE `custom_adonan_ke` IS NULL OR `custom_adonan_ke` NOT REGEXP '^[0-9]+$'"
+	)
+	frappe.db.updatedb(DOCTYPE)
+	return {"custom_adonan_ke": "Data -> Int"}
+
+
 def apply():
 	"""Create/upgrade the workspace fields; migrate leader to Data. Idempotent."""
 	if not os.path.exists(T22_SNAPSHOT):
@@ -1417,6 +1442,7 @@ def apply():
 	# T39: rename the count columns BEFORE the three-lane resync reads them
 	# (create_only above already created the new _qty fields)
 	result["box_qty_rename"] = migrate_box_qty_rename()
+	result["adonan_ke_int"] = reconcile_adonan_ke_int()
 
 	# T35: resolve/backfill/resync handover state BEFORE the full upsert below
 	# narrows the custom_handover_status options (data first, metadata second)

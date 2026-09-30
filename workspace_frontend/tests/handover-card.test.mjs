@@ -61,3 +61,18 @@ test('does not show a box status on Cold Storage cards', () => {
 
   assert.equal(card.box, '')
 })
+
+test('adonan 0 (kosong pasca-Int) tampil kosong, bukan nol', () => {
+  assert.equal(handoverCard({
+    kind: 'request',
+    workOrder: 'MFG-WO-2026-00001',
+    document: 'MAT-MR-2026-00001',
+    batch: null,
+    adonan: 0,
+    quantity: 1,
+    quantityLabel: 'Diminta',
+    timestampLabel: 'Waktu',
+    timestamp: '2026-09-30 08:00:00',
+    units
+  }).adonan, '')
+})
