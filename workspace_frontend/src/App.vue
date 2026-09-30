@@ -8,7 +8,7 @@ import FormOrderPage from './FormOrderPage.vue'
 import FormOrderCreate from './FormOrderCreate.vue'
 import { labelPrintPrompt } from './label-print-prompt.js'
 import { workOrderLabelUrl } from './work-order-label.js'
-import { workOrders, loadList, loadListPreferences, loadSuggestionPreferences, state, uiTopLoading, handoverBoard, handoverRequests, handoverState, loadBoard, formOrderState } from './store.js'
+import { workOrders, loadList, loadListPreferences, loadSuggestionPreferences, loadUiPreferences, state, uiTopLoading, handoverBoard, handoverRequests, handoverState, loadBoard, formOrderState } from './store.js'
 import { ClipboardCheck, ClipboardList, ChevronDown, LayoutGrid, Settings, HelpCircle, Factory, Package } from 'lucide-vue-next'
 
 // router hash minimal: '#/' + '#/wo/<id>' (work order), '#/handover' (stock entry)
@@ -91,6 +91,7 @@ const busyLoading = computed(() =>
   state.loading || handoverState.loading || formOrderState.loading || uiTopLoading.active
 )
 onMounted(async () => {
+  loadUiPreferences() // FU70: segera setelah mungkin — hindari kedipan zoom telat
   await loadListPreferences()
   if (section.value !== 'workorder' || woId.value) loadList()
   loadBoard(); loadSuggestionPreferences()
@@ -328,13 +329,16 @@ function onNavClick() {
 
     <div class="maincol">
       <div class="content">
-        <div v-if="state.error" class="appfoot" style="color:#b3261e">Gagal memuat: {{ state.error }} — <a href="#" @click.prevent="loadList()">coba lagi</a></div>
-        <WarehouseSettings v-else-if="section === 'settings'" />
-        <HandoverBoard v-else-if="section === 'handover'" />
-        <FormOrderCreate v-else-if="foCreate" />
-        <FormOrderPage v-else-if="section === 'form-order'" />
-        <Workspace v-else-if="woId" :key="woId" :id="woId" />
-        <WorkOrderList v-else />
+        <!-- FU70: key per view/WO → wrapper remount → animasi fade halus antarhalaman -->
+        <div :key="(section || '') + (foCreate ? '-baru' : '') + (woId || '')" class="view-anim">
+          <div v-if="state.error" class="appfoot" style="color:#b3261e">Gagal memuat: {{ state.error }} — <a href="#" @click.prevent="loadList()">coba lagi</a></div>
+          <WarehouseSettings v-else-if="section === 'settings'" />
+          <HandoverBoard v-else-if="section === 'handover'" />
+          <FormOrderCreate v-else-if="foCreate" />
+          <FormOrderPage v-else-if="section === 'form-order'" />
+          <Workspace v-else-if="woId" :key="woId" :id="woId" />
+          <WorkOrderList v-else />
+        </div>
         <footer class="appfoot">
           Tersambung ERPNext — server adalah sumber kebenaran.
         </footer>

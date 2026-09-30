@@ -15,6 +15,8 @@ from frappe.utils import cint, flt
 DOCTYPE = "Work Order"
 SUGGESTION_DEFAULT_KEY = "production_app_metadata_suggestions"
 LIST_PREFERENCES_KEY = "production_app_work_order_list_preferences"
+UI_PREFERENCES_KEY = "production_app_ui_preferences"
+FONT_SCALE_MIN, FONT_SCALE_MAX = 90, 125  # % — di luar rentang ini layout rawan pecah (FU70)
 SUGGESTION_FIELDS = {
 	"penimbang": "custom_nama_penimbang",
 	"leader": "custom_leader_produksi",
@@ -238,6 +240,23 @@ def list_preferences_save(values):
 	values = frappe.parse_json(values) or {}
 	set_user_default(LIST_PREFERENCES_KEY, frappe.as_json(values))
 	return values
+
+
+@frappe.whitelist()
+def ui_preferences():
+	"""FU70: preferensi tampilan per-user (ukuran font, %). Pola
+	list_preferences — user default milik pemanggil, tanpa gate role."""
+	data = frappe.parse_json(get_user_default(UI_PREFERENCES_KEY) or "{}") or {}
+	return {"font_scale": cint(data.get("font_scale") or 100)}
+
+
+@frappe.whitelist()
+def ui_preferences_save(font_scale):
+	scale = cint(font_scale)
+	if scale < FONT_SCALE_MIN or scale > FONT_SCALE_MAX:
+		frappe.throw(_("Ukuran font harus antara {0}% dan {1}%.").format(FONT_SCALE_MIN, FONT_SCALE_MAX))
+	set_user_default(UI_PREFERENCES_KEY, frappe.as_json({"font_scale": scale}))
+	return {"font_scale": scale}
 
 
 def _batch_enrich(rows):

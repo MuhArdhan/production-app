@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { Warehouse } from 'lucide-vue-next'
-import { call, loadSuggestionPreferences, saveSuggestionPreferences, suggestionPreferences, uiTopLoading } from './store.js'
+import { call, loadSuggestionPreferences, saveSuggestionPreferences, suggestionPreferences, uiState, uiTopLoading, saveUiPreferences } from './store.js'
 import LinkInput from './LinkInput.vue'
 
 // FU40: label konsisten Indonesia (istilah ERPNext dipertahankan di keterangan),
@@ -82,6 +82,22 @@ async function toggleSuggestions() {
   }
 }
 
+// FU70: ukuran font per-user — tersimpan saat digeser, berlaku langsung
+const fontScale = ref(uiState.fontScale)
+const fontSaving = ref(false)
+async function onFontScaleChange() {
+  fontSaving.value = true
+  error.value = ''
+  try {
+    fontScale.value = await saveUiPreferences(fontScale.value)
+  } catch (e) {
+    error.value = e.message
+    fontScale.value = uiState.fontScale // kembalikan ke nilai tersimpan
+  } finally {
+    fontSaving.value = false
+  }
+}
+
 async function save() {
   saving.value = true
   error.value = ''
@@ -124,6 +140,20 @@ async function save() {
       <!-- FU20: loading ditandai spinner global di tepi atas (App.vue) -->
       <div v-if="loading" aria-hidden="true"></div>
       <template v-else>
+        <div class="settings-block">
+          <div class="settings-block-head">
+            <div>
+              <h3>Tampilan</h3>
+              <p class="hint">Ukuran font untuk akun ini saja — tersimpan per pengguna, tidak memengaruhi pengguna lain.</p>
+            </div>
+          </div>
+          <div class="field" style="max-width: 380px; margin-top: 4px">
+            <label for="ui-font-scale">Ukuran font: <strong>{{ fontScale }}%</strong></label>
+            <input id="ui-font-scale" v-model.number="fontScale" type="range" min="90" max="125" step="5" :disabled="fontSaving" @change="onFontScaleChange" />
+            <div class="hint">Rentang dibatasi 90–125% agar layout tetap rapi.</div>
+          </div>
+        </div>
+
         <div class="settings-block">
           <div class="settings-block-head">
             <div>

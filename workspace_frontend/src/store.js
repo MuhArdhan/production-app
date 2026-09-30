@@ -1,5 +1,7 @@
 import { reactive } from 'vue'
 
+import { applyFontScale } from './ui-preferences.js'
+
 // ============================================================================
 // ADAPTER SERVER (T13/T14) — menggantikan mock store.
 // Semua data & stage datang dari server: /api/method/production_app.api...
@@ -240,6 +242,26 @@ export async function call(method, args) {
 }
 
 export const suggestionPreferences = reactive({ enabled: true })
+
+// FU70: preferensi tampilan per-user (ukuran font, %)
+export const uiState = reactive({ fontScale: 100 })
+
+export async function loadUiPreferences() {
+  try {
+    const result = await call('production_app.api.work_order.ui_preferences')
+    uiState.fontScale = applyFontScale(result.font_scale)
+  } catch (_) {
+    // kosmetik — kegagalan memuat tidak boleh menggagalkan boot (state.error
+    // menggantikan seluruh halaman)
+  }
+  return uiState.fontScale
+}
+
+export async function saveUiPreferences(scale) {
+  const result = await call('production_app.api.work_order.ui_preferences_save', { font_scale: scale })
+  uiState.fontScale = applyFontScale(result.font_scale)
+  return uiState.fontScale
+}
 
 export async function loadSuggestionPreferences() {
   try {
