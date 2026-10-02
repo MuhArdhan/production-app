@@ -7,7 +7,7 @@ import HandoverBoard from './HandoverBoard.vue'
 import FormOrderPage from './FormOrderPage.vue'
 import FormOrderCreate from './FormOrderCreate.vue'
 import { labelPrintPrompt } from './label-print-prompt.js'
-import { workOrderLabelUrl } from './work-order-label.js'
+import { printLabels } from './qz-tray.js'
 import { workOrders, loadList, loadListPreferences, loadSuggestionPreferences, loadUiPreferences, state, uiTopLoading, handoverBoard, handoverRequests, handoverState, loadBoard, formOrderState } from './store.js'
 import { ClipboardCheck, ClipboardList, ChevronDown, LayoutGrid, Settings, HelpCircle, Factory, Package } from 'lucide-vue-next'
 
@@ -68,8 +68,6 @@ const navOpen = ref(false)
 const userMenu = ref(false)
 const errorDialog = ref(null)
 const labelPrintDialog = ref(null)
-const labelPrintFrame = ref(null)
-const printJob = ref(null)
 const extraLabelCount = ref(0)
 const labelCountValid = computed(() =>
   extraLabelCount.value !== '' &&
@@ -78,7 +76,6 @@ const labelCountValid = computed(() =>
   labelPrintPrompt.labelCount + Number(extraLabelCount.value) <= 10000
 )
 const totalLabelCount = computed(() => labelPrintPrompt.labelCount + Number(extraLabelCount.value || 0))
-let printJobSequence = 0
 const errorClose = ref(null)
 const currentUser = window.workspace_user || 'Pengguna ERPNext'
 const initials = currentUser.split(' ').slice(0, 2).map(s => s[0]).join('')
@@ -120,41 +117,23 @@ function closeLabelPrint() {
   labelPrintPrompt.afterSave = false
 }
 
-function confirmLabelPrint() {
+async function confirmLabelPrint() {
   const workOrder = labelPrintPrompt.workOrder
   if (!workOrder || !labelCountValid.value) return
-  printJob.value = {
-    key: ++printJobSequence,
-    url: workOrderLabelUrl(workOrder, Number(extraLabelCount.value)) + '&embedded=1'
+  
+  try {
+    await printLabels(workOrder, Number(extraLabelCount.value))
+    closeLabelPrint()
+  } catch (err) {
+    state.actionError = {
+      title: 'Cetak Label Gagal',
+      message: err.message || 'Gagal terhubung ke QZ Tray atau printer.',
+      details: [],
+      hint: 'Pastikan QZ Tray sedang berjalan di komputer Anda.'
+    }
   }
-  closeLabelPrint()
 }
 
-function onLabelFrameLoad() {
-  const frameWindow = labelPrintFrame.value?.contentWindow
-  if (!frameWindow?.workOrderLabelReady) {
-    state.actionError = {
-      title: 'Cetak Label Gagal',
-      message: 'Halaman label tidak dapat dimuat. Buka kembali Work Order lalu coba cetak lagi.',
-      details: [],
-      hint: ''
-    }
-    printJob.value = null
-    return
-  }
-  try {
-    frameWindow.focus()
-    frameWindow.print()
-  } catch (_) {
-    state.actionError = {
-      title: 'Cetak Label Gagal',
-      message: 'Browser tidak dapat membuka dialog printer. Periksa izin cetak pada browser.',
-      details: [],
-      hint: ''
-    }
-    printJob.value = null
-  }
-}
 
 function closeError() {
   if (errorDialog.value?.open) errorDialog.value.close()
@@ -359,17 +338,7 @@ function onNavClick() {
       </div>
     </dialog>
 
-    <iframe
-      v-if="printJob"
-      :key="printJob.key"
-      ref="labelPrintFrame"
-      :src="printJob.url"
-      title="Dokumen cetak label"
-      aria-hidden="true"
-      tabindex="-1"
-      style="position: fixed; left: -10000px; top: 0; width: 1px; height: 1px; border: 0"
-      @load="onLabelFrameLoad"
-    ></iframe>
+
 
     <dialog ref="errorDialog" class="dialog error-dialog" aria-labelledby="error-dialog-title" @cancel.prevent="closeError" @click.self="closeError">
       <div class="error-dialog-icon" aria-hidden="true">!</div>
