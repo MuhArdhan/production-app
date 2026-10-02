@@ -11,7 +11,7 @@ import MaterialUsagePage from './MaterialUsagePage.vue'
 import StockAvailabilityPage from './StockAvailabilityPage.vue'
 import LainnyaPage from './LainnyaPage.vue'
 import { labelPrintPrompt } from './label-print-prompt.js'
-import { workOrderLabelUrl } from './work-order-label.js'
+import { printLabels } from './qz-tray.js'
 import { workOrders, listState, loadList, loadListPreferences, loadSuggestionPreferences, loadUiPreferences, loadCompanyFilter, state, uiTopLoading, handoverBoard, handoverRequests, handoverState, loadBoard, formOrderState, dashboardState } from './store.js'
 import { activeTotal } from './dashboard.js'
 import { ClipboardCheck, ClipboardList, ChevronDown, LayoutGrid, MoreHorizontal, PackageSearch, RotateCw, Settings, HelpCircle, Factory, Package, Wheat } from 'lucide-vue-next'
@@ -106,8 +106,6 @@ const navOpen = ref(false)
 const userMenu = ref(false)
 const errorDialog = ref(null)
 const labelPrintDialog = ref(null)
-const labelPrintFrame = ref(null)
-const printJob = ref(null)
 const extraLabelCount = ref(0)
 const labelCountValid = computed(() =>
   extraLabelCount.value !== '' &&
@@ -116,7 +114,6 @@ const labelCountValid = computed(() =>
   labelPrintPrompt.labelCount + Number(extraLabelCount.value) <= 10000
 )
 const totalLabelCount = computed(() => labelPrintPrompt.labelCount + Number(extraLabelCount.value || 0))
-let printJobSequence = 0
 const errorClose = ref(null)
 const currentUser = window.workspace_user || 'Pengguna ERPNext'
 const initials = currentUser.split(' ').slice(0, 2).map(s => s[0]).join('')
@@ -175,39 +172,23 @@ function closeLabelPrint() {
   labelPrintPrompt.afterSave = ''
 }
 
-function confirmLabelPrint() {
+async function confirmLabelPrint() {
   const workOrder = labelPrintPrompt.workOrder
   if (!workOrder || !labelCountValid.value) return
-  printJob.value = {
-    key: ++printJobSequence,
-    url: workOrderLabelUrl(workOrder, Number(extraLabelCount.value)) + '&embedded=1'
+  
+  try {
+    await printLabels(workOrder, Number(extraLabelCount.value))
+    closeLabelPrint()
+  } catch (err) {
+    state.actionError = {
+      title: 'Cetak Label Gagal',
+      message: err.message || 'Gagal terhubung ke QZ Tray atau printer.',
+      details: [],
+      hint: 'Pastikan QZ Tray sedang berjalan di komputer Anda.'
+    }
   }
-  closeLabelPrint()
 }
 
-function onLabelFrameLoad() {
-  const frameWindow = labelPrintFrame.value?.contentWindow
-  if (!frameWindow?.workOrderLabelReady) {
-    state.actionError = {
-      title: 'Cetak Label Gagal',
-      message: 'Halaman label gagal dimuat. Coba cetak lagi.',
-      details: []
-    }
-    printJob.value = null
-    return
-  }
-  try {
-    frameWindow.focus()
-    frameWindow.print()
-  } catch (_) {
-    state.actionError = {
-      title: 'Cetak Label Gagal',
-      message: 'Dialog printer tidak bisa dibuka. Periksa izin cetak browser.',
-      details: []
-    }
-    printJob.value = null
-  }
-}
 
 function closeError() {
   if (errorDialog.value?.open) errorDialog.value.close()
@@ -493,17 +474,7 @@ function muatUlangHalaman() {
       </div>
     </dialog>
 
-    <iframe
-      v-if="printJob"
-      :key="printJob.key"
-      ref="labelPrintFrame"
-      :src="printJob.url"
-      title="Dokumen cetak label"
-      aria-hidden="true"
-      tabindex="-1"
-      style="position: fixed; left: -10000px; top: 0; width: 1px; height: 1px; border: 0"
-      @load="onLabelFrameLoad"
-    ></iframe>
+
 
     <dialog ref="errorDialog" class="dialog error-dialog" aria-labelledby="error-dialog-title" @cancel.prevent="closeError" @click.self="closeError">
       <div class="error-dialog-icon" aria-hidden="true">!</div>
