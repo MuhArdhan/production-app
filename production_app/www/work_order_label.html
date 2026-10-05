@@ -67,7 +67,7 @@
   </div>
   {% for _ in labels %}
   <div class="batch-label{% if loop.last %} last{% endif %}">
-    <div class="label-sequence">{{ loop.index }}/{{ label_count }}</div>
+    <div class="label-sequence">{{ loop.index }}</div>
     <div class="qr-block">
       <img src="data:image/svg+xml;base64,{{ qr_svg_base64 }}" alt="QR SKU {{ sku | e }}">
       <div class="batch-id-small">{{ sku | e }}</div>
