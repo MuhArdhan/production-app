@@ -1,13 +1,36 @@
 import qz from 'qz-tray';
 
-let isConnected = false;
+function configureSigning(workOrder) {
+  qz.security.setCertificatePromise(async () => {
+    const response = await fetch(`/api/method/production_app.api.qz_signing.certificate?work_order=${encodeURIComponent(workOrder)}`, {
+      cache: 'no-store'
+    });
+    if (!response.ok) throw new Error('Sertifikat QZ Tray belum tersedia atau akses ditolak');
+    return (await response.json()).message;
+  }, { rejectOnFailure: true });
 
-export async function connectQz() {
-  if (isConnected) return;
+  qz.security.setSignatureAlgorithm('SHA512');
+  qz.security.setSignaturePromise(async request => {
+    const response = await fetch('/api/method/production_app.api.qz_signing.sign', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Frappe-CSRF-Token': window.csrf_token || ''
+      },
+      credentials: 'same-origin',
+      cache: 'no-store',
+      body: JSON.stringify({ work_order: workOrder, request })
+    });
+    if (!response.ok) throw new Error('Gagal menandatangani permintaan QZ Tray');
+    return (await response.json()).message;
+  });
+}
+
+export async function connectQz(workOrder) {
+  configureSigning(workOrder);
   if (!qz.websocket.isActive()) {
     await qz.websocket.connect({ retries: 2, delay: 1 });
   }
-  isConnected = true;
 }
 
 export async function printLabels(workOrder, extraCount = 0) {
@@ -23,7 +46,7 @@ export async function printLabels(workOrder, extraCount = 0) {
       throw new Error('Data label kosong');
     }
 
-    await connectQz();
+    await connectQz(workOrder);
 
     // Default printer or prompt user, QZ Tray allows finding printers
     // For now, we find a default ZPL printer or just the default printer

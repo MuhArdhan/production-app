@@ -82,6 +82,15 @@ doctype_js = {"Production Plan": "public/js/production_plan.js"}
 # 	"Role": "home_page"
 # }
 
+# Short URL for downloading the public QZ Tray certificate.
+website_redirects = [
+	{
+		"source": r"/qz-certificate",
+		"target": "/api/method/production_app.api.qz_signing.download_certificate",
+		"redirect_http_status": 302,
+	}
+]
+
 # Generators
 # ----------
 
