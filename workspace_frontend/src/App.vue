@@ -129,7 +129,9 @@ async function confirmLabelPrint() {
       title: 'Cetak Label Gagal',
       message: err.message || 'Gagal terhubung ke QZ Tray atau printer.',
       details: [],
-      hint: 'Pastikan QZ Tray sedang berjalan di komputer Anda.'
+      hint: /sign|sertifikat|certificate/i.test(err.message || '')
+        ? 'Periksa sertifikat QZ Tray di komputer dan private key di server.'
+        : 'Pastikan QZ Tray sedang berjalan di komputer Anda.'
     }
   }
 }
