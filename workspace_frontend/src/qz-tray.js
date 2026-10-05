@@ -64,11 +64,11 @@ export async function printLabels(workOrder, extraCount = 0) {
       let zpl = `^XA\n^PW800\n^LL160\n`; // 800 width (2x400), 160 height
 
       // First column (left)
-      zpl += getSingleLabelZpl(labelData, 0, i + 1, count);
+      zpl += getSingleLabelZpl(labelData, 0, i + 1);
 
       // Second column (right)
       if (i + 1 < count) {
-        zpl += getSingleLabelZpl(labelData, 400, i + 2, count);
+        zpl += getSingleLabelZpl(labelData, 400, i + 2);
       }
 
       zpl += `^XZ\n`;
@@ -88,7 +88,7 @@ export async function printLabels(workOrder, extraCount = 0) {
   }
 }
 
-function getSingleLabelZpl(data, offsetX, seq, total) {
+function getSingleLabelZpl(data, offsetX, seq) {
   const mfg = data.manufacturing_date ? formatDate(data.manufacturing_date) : '-';
   const exp = data.expiry_date ? formatDate(data.expiry_date) : '-';
 
@@ -101,7 +101,7 @@ function getSingleLabelZpl(data, offsetX, seq, total) {
   };
 
   // Label Sequence Top Right
-  zpl += bText(offsetX + 340, 25, 16, 16, `${seq}/${total}`, `^FB50,1,0,R`);
+  zpl += bText(offsetX + 340, 25, 16, 16, `${seq}`, `^FB50,1,0,R`);
 
   // QR Block (Left, geser agar di tengah)
   zpl += `^FO${offsetX + 95},55^BQN,2,3^FDQA,${data.sku}^FS\n`;
