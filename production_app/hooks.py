@@ -8,7 +8,7 @@ app_license = "mit"
 # Apps
 # ------------------
 
-required_apps = ["erpnext"]
+required_apps = ["erpnext", "product_qr"]
 
 # Idempotent metadata install/upgrade; required on a fresh Frappe Cloud site.
 after_install = "production_app.upgrade.apply"

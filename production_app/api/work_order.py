@@ -1415,19 +1415,8 @@ def finish(name):
 		"stage": derive_stage(wo),
 	}
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def get_label_data(name, extra=0):
-    from production_app.www.work_order_label import get_context
-    frappe.form_dict.name = name
-    frappe.form_dict.extra = extra
-    ctx = frappe._dict()
-    get_context(ctx)
-    return {
-        "work_order": ctx.work_order,
-        "sku": ctx.sku,
-        "item_name_prefix": ctx.item_name_prefix,
-        "item_name_main": ctx.item_name_main,
-        "manufacturing_date": ctx.manufacturing_date,
-        "expiry_date": ctx.expiry_date,
-        "label_count": ctx.label_count
-    }
+    from production_app.api.work_order_labels import label_data
+
+    return label_data(name, extra, issue=True)

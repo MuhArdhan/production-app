@@ -1,0 +1,37 @@
+{
+ "actions": [],
+ "autoname": "field:product_qr_serial",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": ["work_order", "product_qr_serial"],
+ "fields": [
+  {
+   "fieldname": "work_order",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Work Order",
+   "options": "Work Order",
+   "reqd": 1
+  },
+  {
+   "fieldname": "product_qr_serial",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Product QR Serial",
+   "options": "Product QR Serial",
+   "reqd": 1,
+   "unique": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "module": "Production App",
+ "name": "Work Order QR Label",
+ "permissions": [
+  {"read": 1, "role": "System Manager"},
+  {"read": 1, "role": "Manufacturing Manager"},
+  {"read": 1, "role": "Manufacturing User"}
+ ],
+ "sort_field": "creation",
+ "sort_order": "ASC"
+}

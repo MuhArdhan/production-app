@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import qz from 'qz-tray'
-import { connectQz } from '../src/qz-tray.js'
+import { connectQz, printLabels } from '../src/qz-tray.js'
 
 test('QZ uses site certificate and server SHA512 signing for selected Work Order', async () => {
   let certificateCallback
@@ -41,6 +41,60 @@ test('QZ uses site certificate and server SHA512 signing for selected Work Order
     qz.security.setSignaturePromise = original.signature
     qz.security.setSignatureAlgorithm = original.algorithm
     qz.websocket.isActive = original.active
+    globalThis.fetch = original.fetch
+    globalThis.window = original.window
+  }
+})
+
+test('QZ prints a different SKU-BATCH-SERIAL QR for each Work Order label', async () => {
+  const original = {
+    certificate: qz.security.setCertificatePromise,
+    signature: qz.security.setSignaturePromise,
+    algorithm: qz.security.setSignatureAlgorithm,
+    active: qz.websocket.isActive,
+    printer: qz.printers.getDefault,
+    config: qz.configs.create,
+    print: qz.print,
+    fetch: globalThis.fetch,
+    window: globalThis.window
+  }
+  let printed
+  try {
+    qz.security.setCertificatePromise = () => {}
+    qz.security.setSignaturePromise = () => {}
+    qz.security.setSignatureAlgorithm = () => {}
+    qz.websocket.isActive = () => true
+    qz.printers.getDefault = async () => 'test-printer'
+    qz.configs.create = () => ({})
+    qz.print = async (_config, jobs) => { printed = jobs }
+    globalThis.window = { csrf_token: 'csrf-test' }
+    globalThis.fetch = async (_url, options) => {
+      assert.equal(options.method, 'POST')
+      assert.deepEqual(JSON.parse(options.body), { name: 'WO-1', extra: 0 })
+      return { ok: true, json: async () => ({ message: {
+        sku: 'SKU-A', batch_no: 'B-01', item_name_main: 'Product A',
+        manufacturing_date: '2026-10-06', expiry_date: null, label_count: 2,
+        labels: [
+          { serial_no: 'S001', qr_value: 'SKU-A-B-01-S001' },
+          { serial_no: 'S002', qr_value: 'SKU-A-B-01-S002' }
+        ]
+      } }) }
+    }
+
+    await printLabels('WO-1')
+    assert.equal(printed.length, 1)
+    assert.match(printed[0], /\^FDQA,SKU-A-B-01-S001\^FS/)
+    assert.match(printed[0], /\^FDQA,SKU-A-B-01-S002\^FS/)
+    assert.match(printed[0], /SKU : SKU-A/)
+    assert.doesNotMatch(printed[0], /Batch : B-01|Serial : S00/)
+  } finally {
+    qz.security.setCertificatePromise = original.certificate
+    qz.security.setSignaturePromise = original.signature
+    qz.security.setSignatureAlgorithm = original.algorithm
+    qz.websocket.isActive = original.active
+    qz.printers.getDefault = original.printer
+    qz.configs.create = original.config
+    qz.print = original.print
     globalThis.fetch = original.fetch
     globalThis.window = original.window
   }
