@@ -175,7 +175,6 @@ function closeLabelPrint() {
 async function confirmLabelPrint() {
   const workOrder = labelPrintPrompt.workOrder
   if (!workOrder || !labelCountValid.value) return
-  
   try {
     await printLabels(workOrder, Number(extraLabelCount.value))
     closeLabelPrint()

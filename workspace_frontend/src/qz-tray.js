@@ -35,33 +35,48 @@ export async function connectQz(workOrder) {
 
 export async function printLabels(workOrder, extraCount = 0) {
   try {
-    const res = await fetch(`/api/method/production_app.api.work_order.get_label_data?name=${encodeURIComponent(workOrder)}&extra=${extraCount}`);
-    if (!res.ok) {
-      throw new Error('Gagal mengambil data label');
-    }
+    await connectQz(workOrder);
+    const res = await fetch('/api/method/production_app.api.work_order.get_label_data', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Frappe-CSRF-Token': window.csrf_token || ''
+      },
+      body: JSON.stringify({ name: workOrder, extra: extraCount })
+    });
     const data = await res.json();
+    if (!res.ok) {
+      let detail = '';
+      try {
+        const messages = JSON.parse(data._server_messages || '[]');
+        detail = messages.map(message => JSON.parse(message).message).filter(Boolean).join(' ');
+      } catch (_error) {
+        // Keep the generic message if Frappe did not return structured errors.
+      }
+      throw new Error(detail || 'Gagal mengambil data label');
+    }
     const { message: labelData } = data;
 
     if (!labelData) {
       throw new Error('Data label kosong');
     }
 
-    await connectQz(workOrder);
-
     let printer = await qz.printers.getDefault();
 
     const labels = [];
-    const count = labelData.label_count;
+    const count = labelData.labels?.length || 0;
+    if (!count || count !== labelData.label_count) throw new Error('Jumlah serial label tidak sesuai');
 
     for (let i = 0; i < count; i += 2) {
       let zpl = `^XA\n^PW800\n^LL160\n`;
 
       // First column (left)
-      zpl += getSingleLabelZpl(labelData, 0, i + 1);
+      zpl += getSingleLabelZpl(labelData, labelData.labels[i], 0, i + 1);
 
       // Second column (right)
       if (i + 1 < count) {
-        zpl += getSingleLabelZpl(labelData, 400, i + 2);
+        zpl += getSingleLabelZpl(labelData, labelData.labels[i + 1], 400, i + 2);
       }
 
       zpl += `^XZ\n`;
@@ -81,7 +96,13 @@ export async function printLabels(workOrder, extraCount = 0) {
   }
 }
 
-function getSingleLabelZpl(data, offsetX, seq) {
+function zplValue(value) {
+  return String(value ?? '').replace(/[_^~\\]/g, char => ({
+    _: '_5F', '^': '_5E', '~': '_7E', '\\': '_5C'
+  })[char]);
+}
+
+function getSingleLabelZpl(data, label, offsetX, seq) {
   const mfg = data.manufacturing_date ? formatDate(data.manufacturing_date) : '-';
   const exp = data.expiry_date ? formatDate(data.expiry_date) : '-';
 
@@ -97,10 +118,7 @@ function getSingleLabelZpl(data, offsetX, seq) {
   zpl += bText(offsetX + 355, 28, 18, 18, `${seq}`, `^FB40,1,0,R`);
 
   // --- QR BLOCK (Sisi Kiri - Digeser manual ke kanan) ---
-  zpl += `^FO${offsetX + 68},32^BQN,2,4^FDQA,${data.sku}^FS\n`;
-  
-  // SKU di bawah QR (Digeser manual ke kanan)
-  zpl += bText(offsetX + 45, 130, 18, 18, data.sku, `^FB120,1,0,C`);
+  zpl += `^FO${offsetX + 68},32^BQN,2,4^FDQA,${zplValue(label.qr_value)}^FS\n`;
 
   // --- INFO BLOCK (Sisi Kanan - Digeser manual ke kanan) ---
   let y = 32;

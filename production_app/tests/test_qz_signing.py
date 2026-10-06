@@ -14,6 +14,9 @@ from production_app.api import qz_signing
 class TestQzSigning(FrappeTestCase):
 	def setUp(self):
 		frappe.set_user("Administrator")
+		stage_patch = patch.object(qz_signing, "skips_prepacking", return_value=False)
+		stage_patch.start()
+		self.addCleanup(stage_patch.stop)
 
 	def test_signs_qz_hash_with_site_private_key(self):
 		key = rsa.generate_private_key(public_exponent=65537, key_size=2048)

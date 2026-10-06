@@ -13,6 +13,8 @@ from frappe import _
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
+from production_app.api.work_order import skips_prepacking
+
 
 def _files():
 	base = Path(frappe.get_site_path("private", "qz_signing"))
@@ -26,8 +28,10 @@ def _check_work_order(name):
 		frappe.throw(_("Work Order wajib dipilih untuk mencetak label."))
 	wo = frappe.get_doc("Work Order", name)
 	wo.check_permission("read")
-	if not wo.get("custom_prepacking_confirmed"):
-		frappe.throw(_("Simpan Pre-Packing sebelum mencetak label Work Order {0}.").format(name))
+	stage = "postpacking" if skips_prepacking(wo.production_item) else "prepacking"
+	stage_label = "Post-Packing" if stage == "postpacking" else "Pre-Packing"
+	if not wo.get(f"custom_{stage}_confirmed"):
+		frappe.throw(_("Simpan {0} sebelum mencetak label Work Order {1}.").format(stage_label, name))
 	return wo
 
 
