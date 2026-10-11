@@ -55,84 +55,56 @@ async function confirmComplete() {
     </div>
 
     <div class="panel-body">
-      <div class="sum-sec">
-        <div class="sum-row">
-          <span class="k">Rencana</span>
-          <span class="v">{{ qtyMain(wo.plannedStockQty, qip) }}</span>
+      <div class="fin-kpis">
+        <div class="fin-kpi">
+          <span class="fk-label">Rencana</span>
+          <span class="fk-value">{{ qtyMain(wo.plannedStockQty, qip) }}</span>
         </div>
-        <div class="sum-row">
-          <span class="k">Hasil</span>
-          <span class="v">{{ qtyMain(fg, qip) }}</span>
+        <div class="fin-kpi">
+          <span class="fk-label">Hasil</span>
+          <span class="fk-value">{{ qtyMain(fg, qip) }}</span>
         </div>
-        <div class="sum-row">
-          <span class="k">Selisih</span>
-          <span class="v" :class="diffCls">{{ diffText }}</span>
-        </div>
-      </div>
-
-      <div v-if="!wo.skipPrepacking" class="sum-sec">
-        <div class="sect">Pre-Packing</div>
-        <div class="sum-row">
-          <span class="k">Good</span>
-          <span class="v">{{ qtyText(pre.goodQty) }}</span>
-        </div>
-        <div class="sum-row">
-          <span class="k">Reject</span>
-          <span class="v">{{ qtyText(pre.rejectQty) }}</span>
-        </div>
-        <div class="sum-row">
-          <span class="k">Trial</span>
-          <span class="v">{{ qtyText(pre.trialQty) }}</span>
-        </div>
-        <div class="sum-row">
-          <span class="k">Sisa</span>
-          <span class="v">{{ qtyText(pre.sisaQty) }}</span>
-        </div>
-        <div class="sum-row">
-          <span class="k">Total</span>
-          <span class="v">{{ preTotal != null ? qtyMain(preTotal, qip) : '-' }}</span>
-        </div>
-        <div class="sum-row">
-          <span class="k">Jam · QC</span>
-          <span class="v"><span class="dim">{{ pre.jam || '-' }} · {{ pre.qc || '-' }}</span></span>
+        <div class="fin-kpi">
+          <span class="fk-label">Selisih</span>
+          <span class="fk-value" :class="diffCls">{{ diffText }}</span>
         </div>
       </div>
 
-      <div class="sum-sec">
-        <div class="sect">Post-Packing</div>
-        <div class="sum-row">
-          <span class="k">Good</span>
-          <span class="v">{{ qtyText(post.goodQty) }}</span>
+      <div class="fin-cols">
+        <div v-if="!wo.skipPrepacking" class="fin-block">
+          <div class="fin-block-head">Pre-Packing</div>
+          <div class="fin-rows">
+            <div class="fin-row"><span class="k">Good</span><span class="v">{{ qtyText(pre.goodQty) }}</span></div>
+            <div class="fin-row"><span class="k">Reject</span><span class="v">{{ qtyText(pre.rejectQty) }}</span></div>
+            <div class="fin-row"><span class="k">Trial</span><span class="v">{{ qtyText(pre.trialQty) }}</span></div>
+            <div class="fin-row"><span class="k">Sisa</span><span class="v">{{ qtyText(pre.sisaQty) }}</span></div>
+            <div class="fin-row total"><span class="k">Total</span><span class="v">{{ preTotal != null ? qtyMain(preTotal, qip) : '-' }}</span></div>
+            <div class="fin-row"><span class="k">Jam · QC</span><span class="v dim">{{ pre.jam || '-' }} · {{ pre.qc || '-' }}</span></div>
+          </div>
         </div>
-        <div class="sum-row">
-          <span class="k">Reject</span>
-          <span class="v">{{ qtyText(post.rejectQty) }}</span>
-        </div>
-        <div class="sum-row">
-          <span class="k">Trial</span>
-          <span class="v">{{ qtyText(post.trialQty) }}</span>
-        </div>
-        <div class="sum-row">
-          <span class="k">Sisa</span>
-          <span class="v">{{ qtyText(post.sisaQty) }}</span>
-        </div>
-        <div class="sum-row">
-          <span class="k">Total</span>
-          <span class="v">{{ postTotal != null ? qtyMain(postTotal, qip) : '-' }}</span>
+
+        <div class="fin-block">
+          <div class="fin-block-head">Post-Packing</div>
+          <div class="fin-rows">
+            <div class="fin-row"><span class="k">Good</span><span class="v">{{ qtyText(post.goodQty) }}</span></div>
+            <div class="fin-row"><span class="k">Reject</span><span class="v">{{ qtyText(post.rejectQty) }}</span></div>
+            <div class="fin-row"><span class="k">Trial</span><span class="v">{{ qtyText(post.trialQty) }}</span></div>
+            <div class="fin-row"><span class="k">Sisa</span><span class="v">{{ qtyText(post.sisaQty) }}</span></div>
+            <div class="fin-row total"><span class="k">Total</span><span class="v">{{ postTotal != null ? qtyMain(postTotal, qip) : '-' }}</span></div>
+          </div>
         </div>
       </div>
 
-      <div class="sum-sec">
-        <div class="fgbox">
+      <div class="fin-result">
+        <div class="fin-result-main">
           <span>Barang Jadi</span>
-          <span>{{ qtyMain(fg, qip) }}</span>
+          <span class="fin-result-qty">{{ qtyMain(fg, qip) }}</span>
         </div>
-        <div class="sum-row" style="margin-top: 8px">
+        <div class="fin-result-sub">
           <span class="k">Gudang</span>
           <span class="v">{{ wo.warehouse }}</span>
         </div>
       </div>
-
     </div>
 
     <div v-if="!review" class="panel-foot">

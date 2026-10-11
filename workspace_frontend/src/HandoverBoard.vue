@@ -717,8 +717,7 @@ onMounted(() => {
             <span>{{ qtyMain(kirimGood, lotForWo(kirimReq.workOrder) || kirimReq) }}</span>
           </div>
           <p class="hint" style="margin-top: 6px">
-            Qty terkunci sesuai permintaan (hasil Work Order saat request dibuat). Tanggal catat otomatis
-            (sekarang). Stock Entry dibuat dan disubmit server saat dikirim — kekurangan stok ditolak apa adanya.
+            Qty terkunci sesuai permintaan. Tanggal catat otomatis.
           </p>
           <p v-if="kirimRouteWarn" class="callout" role="alert">{{ kirimRouteWarn }}</p>
         </div>

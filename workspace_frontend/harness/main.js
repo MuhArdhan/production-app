@@ -89,10 +89,17 @@ const FO_HEAD = ['Dokumen', 'Item', 'Dibutuhkan', 'Dibuat oleh', 'Status', 'Cata
 
 // StageFinish summary markup (exact classes from stages/StageFinish.vue) so the
 // label/value layout can be screenshotted at real panel width.
-const Q = (s) => h('span', { class: 'k' }, s)
-const V = (s, cls) => h('span', { class: ['v', cls || ''] }, s)
-function sumRow(label, value, cls) {
-  return h('div', { class: 'sum-row' }, [Q(label), V(value, cls)])
+function finRow(label, value, cls) {
+  return h('div', { class: 'fin-row' + (cls ? ' ' + cls : '') }, [
+    h('span', { class: 'k' }, label),
+    h('span', { class: 'v' }, value)
+  ])
+}
+function finBlock(title, rows) {
+  return h('div', { class: 'fin-block' }, [
+    h('div', { class: 'fin-block-head' }, title),
+    h('div', { class: 'fin-rows' }, rows)
+  ])
 }
 function finishPanel() {
   return h('section', { class: 'panel' }, [
@@ -100,31 +107,31 @@ function finishPanel() {
       h('h2', 'Finish')
     ]),
     h('div', { class: 'panel-body' }, [
-      h('div', { class: 'sum-sec' }, [
-        sumRow('Rencana', '25 Pcs'),
-        sumRow('Hasil', '26 Pcs'),
-        sumRow('Selisih', '+1 Pcs', 'pos')
+      h('div', { class: 'fin-kpis' }, [
+        h('div', { class: 'fin-kpi' }, [h('span', { class: 'fk-label' }, 'Rencana'), h('span', { class: 'fk-value' }, '25 Pcs')]),
+        h('div', { class: 'fin-kpi' }, [h('span', { class: 'fk-label' }, 'Hasil'), h('span', { class: 'fk-value' }, '26 Pcs')]),
+        h('div', { class: 'fin-kpi' }, [h('span', { class: 'fk-label' }, 'Selisih'), h('span', { class: 'fk-value pos' }, '+1 Pcs')])
       ]),
-      h('div', { class: 'sum-sec' }, [
-        h('div', { class: 'sect' }, 'Pre-Packing'),
-        sumRow('Good', '26 Pcs'),
-        sumRow('Reject', '0 Pcs'),
-        sumRow('Trial', '0 Pcs'),
-        sumRow('Sisa', '0 Pcs'),
-        sumRow('Total', '26 Pcs'),
-        h('div', { class: 'sum-row' }, [Q('Jam · QC'), h('span', { class: 'v' }, [h('span', { class: 'dim' }, '15:00 · Tita')])])
+      h('div', { class: 'fin-cols' }, [
+        finBlock('Pre-Packing', [
+          finRow('Good', '26 Pcs'),
+          finRow('Reject', '0 Pcs'),
+          finRow('Trial', '0 Pcs'),
+          finRow('Sisa', '0 Pcs'),
+          finRow('Total', '26 Pcs', 'total'),
+          h('div', { class: 'fin-row' }, [h('span', { class: 'k' }, 'Jam · QC'), h('span', { class: 'v dim' }, '15:00 · Tita')])
+        ]),
+        finBlock('Post-Packing', [
+          finRow('Good', '26 Pcs'),
+          finRow('Reject', '0 Pcs'),
+          finRow('Trial', '0 Pcs'),
+          finRow('Sisa', '0 Pcs'),
+          finRow('Total', '26 Pcs', 'total')
+        ])
       ]),
-      h('div', { class: 'sum-sec' }, [
-        h('div', { class: 'sect' }, 'Post-Packing'),
-        sumRow('Good', '26 Pcs'),
-        sumRow('Reject', '0 Pcs'),
-        sumRow('Trial', '0 Pcs'),
-        sumRow('Sisa', '0 Pcs'),
-        sumRow('Total', '26 Pcs')
-      ]),
-      h('div', { class: 'sum-sec' }, [
-        h('div', { class: 'fgbox' }, [h('span', 'Barang Jadi'), h('span', '26 Pcs')]),
-        h('div', { class: 'sum-row', style: 'margin-top: 8px' }, [Q('Gudang'), V('Cold Storage Produksi - JURI')])
+      h('div', { class: 'fin-result' }, [
+        h('div', { class: 'fin-result-main' }, [h('span', 'Barang Jadi'), h('span', { class: 'fin-result-qty' }, '26 Pcs')]),
+        h('div', { class: 'fin-result-sub' }, [h('span', { class: 'k' }, 'Gudang'), h('span', { class: 'v' }, 'Cold Storage Produksi - JURI')])
       ])
     ])
   ])
