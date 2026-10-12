@@ -178,7 +178,10 @@ doc_events = {
 	# resep dough penuh hanya untuk pabrik. before_validate (bukan validate)
 	# karena Production Plan native meng-insert WO dengan ignore_validate=1.
 	"Work Order": {
-		"before_validate": "production_app.api.work_order.enforce_single_level_bom_for_outlet",
+		"before_validate": [
+			"production_app.api.work_order.apply_warehouse_defaults_on_create",
+			"production_app.api.work_order.enforce_single_level_bom_for_outlet",
+		],
 	},
 }
 

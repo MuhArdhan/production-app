@@ -405,6 +405,27 @@ class TestWarehouseDefaultsLive(IntegrationTestCase):
 		self.assertEqual(rows[self.rm1], self.src_new)
 		self.assertEqual(rows[self.rm2], self.bom_row_wh)  # baris BOM dipertahankan
 
+	# ------------------- FU119: WO baru (pola Production Plan) ikut settings
+	def test_fu119_new_wo_follows_settings_over_company_defaults(self):
+		frappe.db.set_value("Company", self.company, {"default_wip_warehouse": self.wip_wh, "default_fg_warehouse": self.fg_wh})
+		frappe.clear_document_cache("Company", self.company)
+		self._save_defaults(source_warehouse=self.src_new, wip_warehouse=self.item_src_wh, fg_warehouse=self.manual_wh)
+		# PP native: source kosong, wip/fg = default Company
+		wo = self._make_wo(bom=self.bom, company=self.company, wip=self.wip_wh, fg=self.fg_wh, submit=False)
+		header = self._header(wo.name)
+		self.assertEqual(header.source_warehouse, self.src_new)
+		self.assertEqual(header.wip_warehouse, self.item_src_wh)
+		self.assertEqual(header.fg_warehouse, self.manual_wh)
+		self.assertEqual(set(self._rows(wo.name).values()), {self.src_new})
+		# pilihan eksplisit (bukan default Company) tidak ditimpa
+		manual = self._make_wo(bom=self.bom, company=self.company, source=self.src_old, wip=self.wip_wh, fg=self.bom_row_wh, submit=False)
+		self.assertEqual(self._header(manual.name).source_warehouse, self.src_old)
+		self.assertEqual(self._header(manual.name).fg_warehouse, self.bom_row_wh)
+		# gudang settings milik company lain tidak dipasang
+		other = self._make_wo(bom=self.bom_ot, company=self.other_company, wip=self.shared_wip, fg=self.shared_fg, submit=False)
+		self.assertEqual(self._header(other.name).fg_warehouse, self.shared_fg)
+		self.assertEqual(self._rows(other.name)[self.rm2], self.shared_row)
+
 	# ----------------------------------------- skenario 11: race draft lock
 	def test_fu58_11_draft_lock_and_adonan_preserved(self):
 		self._save_defaults(source_warehouse=self.src_old)

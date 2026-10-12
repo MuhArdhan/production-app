@@ -1073,14 +1073,44 @@ def _fill_warehouse_defaults(wo):
 		["custom_default_source_warehouse", "custom_default_wip_warehouse", "custom_default_fg_warehouse"],
 		as_dict=True,
 	)
+	# Production Plan native mengisi wip/fg/scrap dari default Company — itu
+	# fallback native, bukan pilihan user, jadi boleh ditimpa settings.
+	company_defaults = (
+		frappe.get_cached_value(
+			"Company",
+			wo.company,
+			["default_wip_warehouse", "default_fg_warehouse", "default_scrap_warehouse"],
+			as_dict=True,
+		)
+		if wo.company
+		else None
+	) or {}
 	for wo_field in WAREHOUSE_DEFAULT_FIELDS:
-		if getattr(wo, wo_field, None):
+		current = getattr(wo, wo_field, None)
+		if current and current != company_defaults.get(f"default_{wo_field}"):
 			continue
+		if wo_field == "wip_warehouse" and wo.get("skip_transfer"):
+			continue  # validate native me-reset wip WO skip_transfer
 		value = settings.get(wo_field)
 		if not value and item:
 			value = item.get(f"custom_default_{wo_field}")
-		if value:
-			setattr(wo, wo_field, value)
+		# settings global, WO per company: gudang company lain tidak pernah dipasang
+		if not value or value == current or frappe.db.get_value("Warehouse", value, "company") != wo.company:
+			continue
+		setattr(wo, wo_field, value)
+		if wo_field == "source_warehouse":
+			# transfer membaca gudang per baris — samakan seperti Desk saat header diganti
+			for row in wo.get("required_items") or []:
+				row.source_warehouse = value
+
+
+def apply_warehouse_defaults_on_create(doc, method=None):
+	"""doc_events Work Order `before_validate` — settings gudang berlaku sejak
+	WO lahir (Production Plan native insert dengan ignore_validate=1; hanya
+	before_validate yang tetap jalan). WO yang sudah ada tidak disentuh."""
+	# WO outlet pos_next sudah membawa gudang Stores-xxx eksplisit
+	if doc.is_new() and not doc.get("posa_pos_profile"):
+		_fill_warehouse_defaults(doc)
 
 
 # ------------------------------------------------- outlet guard (single-level BOM)
