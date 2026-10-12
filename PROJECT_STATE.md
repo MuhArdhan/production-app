@@ -256,6 +256,14 @@ Server API (one module `production_app/api/work_order.py`, whitelist only, sessi
 
 ## Work log
 
+### 2026-10-12 — FU119 — DONE lokal, MENUNGGU deploy cloud (WO baru ikut gudang settings; bug produksi; commit 25d68d6 di main)
+
+- Pemicu: Material Transfer WO-JURI-261012029..032 menarik bahan dari `Gudang Bahan Baku - JURI` padahal settings Sumber = `Gudang Produksi - JURI`; target jadi `Gudang Barang Jadi - JURI`, bukan `Cold Storage Produksi - JURI`. User menghapus WO tersebut (dan SE transfernya).
+- Akar (terverifikasi data cloud): Production Plan native membuat WO dengan source = `BOM.default_source_warehouse` (kosong di 23 BOM aktif) dan wip/fg dari default Company → baris bahan jatuh ke Item Default (226 item = Gudang Bahan Baku sejak 2026-10-09). `_fill_warehouse_defaults` hanya mengisi header KOSONG dan hanya dari `prepare()` → baris tak tersentuh, fg default Company tak pernah ditimpa. Transfer native membaca gudang per baris.
+- Fix: hook `before_validate` `apply_warehouse_defaults_on_create` (jalan walau PP insert `ignore_validate=1`), hanya WO baru & bukan pos_next (`posa_pos_profile`). `_fill_warehouse_defaults` kini menimpa nilai kosong ATAU sama dengan default Company; gudang settings beda company tidak dipasang; wip dilewati bila `skip_transfer`; isi source → semua baris `required_items` ikut.
+- Bukti: test_warehouse_defaults_live 19/19 OK di erp.localhost (termasuk baru `test_fu119_new_wo_follows_settings_over_company_defaults`). Belum: alur PP → Make Work Order riil di cloud.
+- Sisa: user deploy production_app di Frappe Cloud, buat ulang WO, lalu cek header + baris. Risiko: WIP/target manual yang kebetulan = default Company ikut ditimpa settings. API key cloud terekspos di chat → rotasi.
+
 ### 2026-10-09 — FU115 — DONE (tabel WO proporsional, teks tahap ringkas, error jelas; permintaan user; commit 023be0f)
 
 - Pemicu: screenshot user — kolom daftar WO tidak proporsional (No. WO terpotong 2 baris, kolom Gudang kosong lebar, header campur kapital); teks tahap berlebihan; error kurang jelas.
