@@ -8,7 +8,7 @@ app_license = "mit"
 # Apps
 # ------------------
 
-required_apps = ["erpnext"]
+required_apps = ["erpnext", "product_qr"]
 
 # Idempotent metadata install/upgrade; required on a fresh Frappe Cloud site.
 after_install = "production_app.upgrade.apply"
@@ -81,6 +81,15 @@ doctype_js = {"Production Plan": "public/js/production_plan.js"}
 # role_home_page = {
 # 	"Role": "home_page"
 # }
+
+# Short URL for downloading the public QZ Tray certificate.
+website_redirects = [
+	{
+		"source": r"/qz-certificate",
+		"target": "/api/method/production_app.api.qz_signing.download_certificate",
+		"redirect_http_status": 302,
+	}
+]
 
 # Generators
 # ----------

@@ -1684,3 +1684,9 @@ def finish(name):
 		"status": wo.status,
 		"stage": derive_stage(wo),
 	}
+
+@frappe.whitelist(methods=["POST"])
+def get_label_data(name, extra=0):
+    from production_app.api.work_order_labels import label_data
+
+    return label_data(name, extra, issue=True)
