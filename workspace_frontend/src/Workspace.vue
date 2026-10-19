@@ -4,6 +4,7 @@ import { getWo, workOrders, STAGE_LABELS, openWo, state, uiTopLoading, producedQ
 import { fmtDate, qtyMain, qtyStack } from './format.js'
 import { ChevronLeft, Check, CheckCircle2, Printer } from 'lucide-vue-next'
 import { labelCountForWorkOrder, labelSource, offerLabelPrint } from './label-print-prompt.js'
+import { workOrderStages } from './work-order-stages.js'
 import StagePersiapan from './stages/StagePersiapan.vue'
 import StageMaterial from './stages/StageMaterial.vue'
 import StageOperasi from './stages/StageOperasi.vue'
@@ -28,14 +29,7 @@ onMounted(load)
 const view = ref(null)
 watch(() => wo.value?.stage, () => { view.value = null })
 
-const order = computed(() => [
-  'persiapan',
-  'material',
-  ...(wo.value.hasOperations ? ['operasi'] : []),
-  ...(wo.value.skipPrepacking ? [] : ['prepacking']),
-  'postpacking',
-  'finish'
-])
+const order = computed(() => workOrderStages(wo.value))
 
 const activeStage = computed(() =>
   ['completed', 'review', 'cancelled'].includes(wo.value.stage) ? 'finish' : wo.value.stage

@@ -189,6 +189,26 @@ def _upsert_field(dt, spec):
 	return ("created", doc.name)
 
 
+def ensure_plan_skip_transfer_field():
+	"""Narrow, snapshot-first migration; never rewrite existing plan/WO values."""
+	dt = "Production Plan Item"
+	fieldname = "custom_skip_transfer"
+	path = os.path.join(SNAPSHOT_DIR, "plan-skip-transfer-pre.json")
+	if not os.path.exists(path):
+		os.makedirs(SNAPSHOT_DIR, exist_ok=True)
+		existing = frappe.db.get_value("Custom Field", {"dt": dt, "fieldname": fieldname}, "name")
+		data = {"field": frappe.get_doc("Custom Field", existing).as_dict() if existing else None}
+		with open(path, "w") as f:
+			json.dump(data, f, indent=2, sort_keys=True, default=str)
+	action, _name = _upsert_field(dt, _field(
+		fieldname, "Skip Material Transfer", "Check", "planned_qty",
+		default="0", in_list_view=1,
+		description="WO dari baris ini melewati transfer bahan ke WIP; konsumsi bahan tetap saat Manufacture.",
+	))
+	frappe.clear_cache(doctype=dt)
+	return action
+
+
 def ensure_app_fields(create_only=False):
 	out = []
 	for doctype, specs in ((DOCTYPE, WORKSPACE_FIELDS), ("Item", ITEM_FIELDS), ("BOM", BOM_FIELDS)):
@@ -1397,11 +1417,12 @@ def reconcile_adonan_ke_int():
 
 def apply():
 	"""Create/upgrade the workspace fields; migrate leader to Data. Idempotent."""
+	plan_skip_transfer = ensure_plan_skip_transfer_field()
 	if not os.path.exists(T22_SNAPSHOT):
 		snapshot_t22()  # never change handover metadata without a pre-state
 	if not os.path.exists(POSTPACKING_SNAPSHOT):
 		snapshot_t27()  # never change postpacking metadata without a pre-state
-	result = {"fields": ensure_app_fields(create_only=True), "leader": "unchanged"}
+	result = {"fields": ensure_app_fields(create_only=True), "leader": "unchanged", "plan_skip_transfer": plan_skip_transfer}
 	# Fresh installs: the MR/MR Item custom fields (incl. custom_work_order)
 	# must exist BEFORE any step reads those columns — the three-lane resync
 	# plucks Material Request Item rows by custom_work_order. Pre-existing
