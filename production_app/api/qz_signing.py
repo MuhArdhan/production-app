@@ -1,7 +1,7 @@
 """QZ Tray signing for confirmed Work Order labels.
 
-The private key lives in the site's private/qz_signing directory and is never
-returned to the browser. Both endpoints use the current Frappe session.
+The site-specific signing pair takes precedence over the bundled app pair.
+The private key is never returned to the browser.
 """
 
 import base64
@@ -18,6 +18,10 @@ from production_app.api.work_order import skips_prepacking
 
 def _files():
 	base = Path(frappe.get_site_path("private", "qz_signing"))
+	# Treat the pair as one source. An incomplete site override must fail rather
+	# than combine a site's certificate with the bundled private key (or vice versa).
+	if not any((base / name).exists() for name in ("digital-certificate.txt", "private-key.pem")):
+		base = Path(frappe.get_app_path("production_app", "qz_signing"))
 	return base / "digital-certificate.txt", base / "private-key.pem"
 
 
