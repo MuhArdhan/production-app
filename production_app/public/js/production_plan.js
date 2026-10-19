@@ -19,6 +19,9 @@
 	const MODE_STORAGE_KEY = "production_app.pp_wizard.last_mode";
 	const PREVIEW_ROWS = 5;
 	const WO_SOFT_LIMIT = 50;
+	// Identitas Krim Kopi / Krim Kopi 700gr yang terverifikasi; tampilkan segera
+	// saat dipilih, tanpa menunggu request detail Item/BOM selesai.
+	const KRIM_KOPI_ITEMS = new Set(["PJ260016", "PJ260008"]);
 
 	frappe.ui.form.on("Production Plan", {
 		refresh(frm) {
@@ -123,6 +126,14 @@
 					read_only: 1,
 					default: 1,
 				},
+				{
+					label: __("Skip Material Transfer"),
+					fieldname: "custom_skip_transfer",
+					fieldtype: "Check",
+					default: 1,
+					hidden: 1,
+				},
+				{ fieldname: "skip_transfer_allowed", fieldtype: "Check", hidden: 1, default: 0 },
 				{ fieldname: "stock_uom", fieldtype: "Data", hidden: 1 },
 				{ fieldtype: "Section Break" },
 				{ fieldtype: "HTML", fieldname: "live_summary" },
@@ -172,6 +183,9 @@
 				uom: d.get_value("uom"),
 				qty_in_uom: flt(d.get_value("qty_in_uom")),
 				conversion_factor: flt(d.get_value("conversion_factor")) || 1,
+				skip_transfer_allowed: cint(d.get_value("skip_transfer_allowed")),
+				custom_skip_transfer: cint(d.get_value("skip_transfer_allowed"))
+					? cint(d.get_value("custom_skip_transfer")) : 0,
 			};
 		}
 
@@ -182,6 +196,7 @@
 				d.set_value(f, values[f]);
 			});
 			suppress = false;
+			d.set_df_property("custom_skip_transfer", "hidden", !cint(d.get_value("skip_transfer_allowed")));
 			update_summary();
 		}
 
@@ -203,6 +218,8 @@
 				bom_name: "",
 				qty_in_uom: "",
 				conversion_factor: 1,
+				custom_skip_transfer: 0,
+				skip_transfer_allowed: 0,
 			});
 		}
 
@@ -212,6 +229,9 @@
 			const code = d.get_value("item_code");
 			reset_item_fields();
 			if (!code) return;
+			if (KRIM_KOPI_ITEMS.has(code)) {
+				fill({ skip_transfer_allowed: 1, custom_skip_transfer: 1 });
+			}
 
 			frappe.call({
 				method: `${API}.item_plan_info`,
@@ -219,11 +239,18 @@
 			}).then((r) => {
 				if (my !== seq || !r.message) return; // user sudah pindah ke item lain
 				const info = r.message;
+				// Fallback untuk worker yang masih mengirim shape API lama.
+				const allowed = info.skip_transfer_allowed ?? KRIM_KOPI_ITEMS.has(code);
+				const checked = allowed
+					? (cint(d.get_value("skip_transfer_allowed")) ? cint(d.get_value("custom_skip_transfer")) : 1)
+					: 0;
 				fill({
 					item_name: info.item_name || "",
 					stock_uom: info.stock_uom || "",
 					uom: info.default_uom || info.stock_uom || "",
 					conversion_factor: info.conversion_factor,
+					skip_transfer_allowed: allowed ? 1 : 0,
+					custom_skip_transfer: checked,
 				});
 				if (!info.found) {
 					frappe.show_alert({
@@ -398,6 +425,10 @@
 							<td>${format_number(item.qty_in_uom)} ${item.uom}
 								<span class="text-muted">(${format_number(item.qty_in_uom * item.conversion_factor)} ${item.stock_uom || "?"})</span></td>
 						</tr>
+						${item.skip_transfer_allowed ? `<tr>
+							<td class="text-muted">${__("Skip Material Transfer")}</td>
+							<td>${item.custom_skip_transfer ? __("Ya") : __("Tidak")}</td>
+						</tr>` : ""}
 					</tbody>
 				</table>
 			`);
@@ -588,6 +619,7 @@
 					row.bom_no = item.bom_no;
 					row.planned_qty = stock;
 					row.stock_uom = item.stock_uom;
+					row.custom_skip_transfer = item.custom_skip_transfer;
 				});
 				frm.refresh_field("po_items");
 				frm.dirty();

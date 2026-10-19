@@ -18,6 +18,37 @@ from frappe import _
 from frappe.utils import flt
 
 
+def apply_plan_skip_transfer_on_create(doc, method=None):
+	"""Copy the explicit Assembly Items choice to a NEW native Work Order.
+
+	The native plan builder carries the exact child-row identity but does not
+	copy custom fields. before_validate also runs for its ignore_validate insert.
+	Do not change existing WOs, manual WOs or subassembly WOs, and never infer
+	the choice from an Item name or another row with the same Item/BOM.
+	"""
+	if (
+		not doc.is_new()
+		or not doc.get("production_plan")
+		or not doc.get("production_plan_item")
+		or doc.get("production_plan_sub_assembly_item")
+	):
+		return
+	row = frappe.db.get_value(
+		"Production Plan Item",
+		{
+			"name": doc.production_plan_item,
+			"parent": doc.production_plan,
+			"parenttype": "Production Plan",
+			"parentfield": "po_items",
+			"item_code": doc.production_item,
+		},
+		["custom_skip_transfer"],
+		as_dict=True,
+	)
+	if row:
+		doc.skip_transfer = frappe.utils.cint(row.custom_skip_transfer)
+
+
 def _default_uom(item):
 	"""Rantai UOM default input — sama dengan _enrich_units (work_order):
 	field milik warehouse_app (W21), lalu stock UOM. .get() aman di site
@@ -60,6 +91,10 @@ def item_plan_info(item_code):
 
 	out = {
 		"item_name": item.item_name,
+		"skip_transfer_allowed": (
+			not item.get("disabled")
+			and (item.item_name or "").strip().casefold() in {"krim kopi", "krim kopi 700gr"}
+		),
 		"stock_uom": item.stock_uom,
 		"default_uom": default_uom,
 		"conversion_factor": factor if factor is not None else 1.0,
