@@ -1614,8 +1614,10 @@ def finish(name):
 	):
 		transferred[r.item_code] = transferred.get(r.item_code, 0.0) + flt(r.transfer_qty)
 	consumed = frappe._dict()
+	planned = frappe._dict()
 	for r in wo.required_items:
 		consumed[r.item_code] = consumed.get(r.item_code, 0.0) + flt(r.consumed_qty)
+		planned[r.item_code] = planned.get(r.item_code, 0.0) + flt(r.required_qty)
 
 	fg_item = wo.production_item
 	for row in se.items:
@@ -1629,19 +1631,22 @@ def finish(name):
 	# di dua baris, mis. ditautkan ke dua operasi berbeda). Seluruh baris item itu
 	# harus BERBAGI sisa rencana (transferred − consumed) — meng-assign sisa penuh
 	# ke tiap baris membuat konsumsi RM berlipat tanpa error.
+	# Skip-transfer WOs never transfer, so planned quantity comes from required_items;
+	# native get_bom_raw_materials(fg_completed_qty) would otherwise scale RM with yield.
 	rm_rows = [
 		row
 		for row in se.items
 		if not row.is_finished_item
 		and row.s_warehouse
 		and not row.t_warehouse
-		and row.item_code in transferred
+		and (row.item_code in transferred or (wo.skip_transfer and row.item_code in planned))
 	]
 	rows_by_item = {}
 	for row in rm_rows:
 		rows_by_item.setdefault(row.item_code, []).append(row)
 	for item_code, rows in rows_by_item.items():
-		balance = flt(transferred[item_code]) - flt(consumed.get(item_code, 0.0))
+		source = transferred[item_code] if item_code in transferred else planned[item_code]
+		balance = flt(source) - flt(consumed.get(item_code, 0.0))
 		if balance <= 0:
 			continue
 		if len(rows) == 1:
