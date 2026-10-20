@@ -4,7 +4,7 @@ import { PackageCheck } from 'lucide-vue-next'
 import { savePrePacking, suggestionPreferences } from '../store.js'
 import { qtyMain } from '../format.js'
 import QtyInput from '../QtyInput.vue'
-import { labelCountForWorkOrder, offerLabelPrint } from '../label-print-prompt.js'
+import { labelCountForWorkOrder, offerLabelPrint } from '@product-qr/wo-labels'
 
 const props = defineProps({
   wo: { type: Object, required: true },

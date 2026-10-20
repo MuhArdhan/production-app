@@ -7,11 +7,11 @@
     "build": "vite build"
   },
   "dependencies": {
+    "@product-qr/wo-labels": "file:../../product_qr/wo_labels_frontend",
     "@primeuix/themes": "^2.0.3",
     "chart.js": "^4.5.1",
     "lucide-vue-next": "^1.0.0",
     "primevue": "^4.5.5",
-    "qz-tray": "^2.3.0",
     "vue": "^3.5.13"
   },
   "devDependencies": {

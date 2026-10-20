@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
   plugins: [vue()],
+  resolve: { dedupe: ['vue', 'lucide-vue-next'] },
   base: '/assets/production_app/workspace/',
   build: {
     outDir: '../production_app/public/workspace',
