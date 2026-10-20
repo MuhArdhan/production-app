@@ -846,14 +846,11 @@ def _reserved_by_item(requests, wo_rows):
 
 
 def _item_stock(item_code, warehouse):
-	"""Live item+warehouse stock straight off the ledger (batchless pools have
-	no batch dimension to ask get_batch_qty about)."""
+	"""Live item+warehouse balance from Bin (RECO rows post actual_qty=0 with
+	the balance only in qty_after_transaction, so SUM(SLE.actual_qty)
+	under-reports once a reconciliation exists)."""
 	return flt(
-		frappe.db.sql(
-			"select sum(actual_qty) from `tabStock Ledger Entry`"
-			" where item_code=%s and warehouse=%s and is_cancelled=0",
-			(item_code, warehouse),
-		)[0][0]
+		frappe.db.get_value("Bin", {"item_code": item_code, "warehouse": warehouse}, "actual_qty")
 		or 0
 	)
 

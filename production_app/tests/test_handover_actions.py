@@ -2013,3 +2013,32 @@ class TestHandoverActions(IntegrationTestCase):
 		self.assertTrue(done["ok"])
 		for mr_name in result["material_requests"]:
 			self.assertEqual(frappe.db.get_value("Material Request", mr_name, "docstatus"), 2)
+
+	def test_reco_pool_balance_not_ledger_sum(self):
+		"""RECO posts actual_qty=0 with the balance in qty_after_transaction —
+		_item_stock must read the Bin balance, not SUM(SLE.actual_qty); a
+		timing correction like RECO-JURI-261020003 would otherwise shrink the
+		batchless pool (cloud: Bin 1,023 vs SUM 152)."""
+		fg, (wo,) = self._group_ready(60)
+		self.assertEqual(flt(_item_stock(fg, self.cold_wh)), 60)
+		reco = frappe.get_doc(
+			{
+				"doctype": "Stock Reconciliation",
+				"company": self.company,
+				"purpose": "Stock Reconciliation",
+				"posting_date": today(),
+				"posting_time": "11:30:00",
+				"set_posting_time": 1,
+				"items": [
+					{"item_code": fg, "warehouse": self.cold_wh, "qty": 160, "valuation_rate": 10}
+				],
+			}
+		)
+		reco.insert()
+		reco.submit()
+		self.assertEqual(
+			flt(frappe.db.get_value("Bin", {"item_code": fg, "warehouse": self.cold_wh}, "actual_qty") or 0),
+			160,
+		)
+		self.assertEqual(flt(_item_stock(fg, self.cold_wh)), 160)
+		self.assertEqual(flt(self._request(wo)["qty"]), 60)
