@@ -48,6 +48,7 @@ def _first_existing_wo_config():
 def _make_item(code, group, uom, batch=False):
 	if frappe.db.exists("Item", code):
 		frappe.delete_doc("Item", code, force=True)
+	company = frappe.db.get_single_value("Global Defaults", "default_company")
 	doc = frappe.get_doc(
 		{
 			"doctype": "Item",
@@ -63,6 +64,14 @@ def _make_item(code, group, uom, batch=False):
 			"standard_rate": 100,
 			"is_fixed_asset": 0,
 			"opening_stock": 0,
+			"item_defaults": [
+				{
+					"company": company,
+					"default_inventory_account": frappe.db.get_value(
+						"Company", company, "default_inventory_account"
+					),
+				}
+			],
 		}
 	)
 	doc.insert()
@@ -144,7 +153,7 @@ class TestWorkOrderTransactionProof(IntegrationTestCase):
 		se.submit()
 		return se
 
-	def _make_wo(self, qty=100, submit=True):
+	def _make_wo(self, qty=100, submit=True, skip_transfer=False):
 		wo = frappe.get_doc(
 			{
 				"doctype": "Work Order",
@@ -160,6 +169,7 @@ class TestWorkOrderTransactionProof(IntegrationTestCase):
 				"planned_start_date": now(),
 				"transfer_material_against": "Work Order",
 				"use_multi_level_bom": 0,
+				"skip_transfer": 1 if skip_transfer else 0,
 			}
 		)
 		wo.get_items_and_operations_from_bom()
@@ -1478,6 +1488,37 @@ class TestWorkOrderTransactionProof(IntegrationTestCase):
 		wo.db_set("custom_leader_produksi", "12")
 		wo.reload()
 		self.assertEqual(wo.custom_leader_produksi, "12")
+
+	def test_skip_finish_gain_consumes_plan(self):
+		from production_app.api.work_order import confirm_postpacking, confirm_prepacking, finish
+
+		self._receipt(self.rm1, 1000)
+		self._receipt(self.rm2, 1000)
+		wo = self._make_wo(100, skip_transfer=True)  # new kwarg; NO transfer_materials call
+		confirm_prepacking(wo.name, values={"good": 100, "reject": 0, "trial": 0})
+		confirm_postpacking(wo.name, values={"good": 104, "reject": 0, "trial": 0})
+		result = finish(wo.name)
+		wo.reload()
+		self.assertEqual(flt(wo.produced_qty), 104)
+		se = frappe.get_doc("Stock Entry", result["stock_entry"])
+		self.assertEqual(self._rm_rows(se), [(self.rm1, 200.0), (self.rm2, 100.0)])  # plan, not 208/104
+		self.assertEqual(flt(self._fg_rows(se)[0].qty), 104)
+
+	def test_skip_finish_loss_consumes_plan(self):
+		from production_app.api.work_order import confirm_postpacking, confirm_prepacking, finish
+
+		self._receipt(self.rm1, 1000)
+		self._receipt(self.rm2, 1000)
+		wo = self._make_wo(100, skip_transfer=True)
+		confirm_prepacking(wo.name, values={"good": 100, "reject": 0, "trial": 0})
+		confirm_postpacking(wo.name, values={"good": 80, "reject": 0, "trial": 0})
+		result = finish(wo.name)
+		wo.reload()
+		self.assertEqual(flt(wo.produced_qty), 80)
+		self.assertEqual(flt(wo.process_loss_qty), 20)
+		se = frappe.get_doc("Stock Entry", result["stock_entry"])
+		self.assertEqual(self._rm_rows(se), [(self.rm1, 200.0), (self.rm2, 100.0)])
+		self.assertEqual(flt(self._fg_rows(se)[0].qty), 80)
 
 
 class TestWorkOrderOperationsProof(IntegrationTestCase):
