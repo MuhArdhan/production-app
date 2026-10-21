@@ -3,7 +3,6 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import WorkOrderList from './WorkOrderList.vue'
 import Workspace from './Workspace.vue'
 import WarehouseSettings from './WarehouseSettings.vue'
-import { LabelLayoutSettings } from '@product-qr/wo-labels'
 import HandoverBoard from './HandoverBoard.vue'
 import FormOrderPage from './FormOrderPage.vue'
 import FormOrderCreate from './FormOrderCreate.vue'
@@ -11,7 +10,6 @@ import Dashboard from './Dashboard.vue'
 import MaterialUsagePage from './MaterialUsagePage.vue'
 import StockAvailabilityPage from './StockAvailabilityPage.vue'
 import LainnyaPage from './LainnyaPage.vue'
-import { WorkOrderLabelDialogs } from '@product-qr/wo-labels'
 import { workOrders, listState, loadList, loadListPreferences, loadSuggestionPreferences, loadUiPreferences, loadCompanyFilter, state, uiTopLoading, handoverBoard, handoverRequests, handoverState, loadBoard, formOrderState, dashboardState } from './store.js'
 import { activeTotal } from './dashboard.js'
 import { ClipboardCheck, ClipboardList, ChevronDown, LayoutGrid, MoreHorizontal, PackageSearch, RotateCw, Settings, HelpCircle, Factory, Package, Wheat } from 'lucide-vue-next'
@@ -397,7 +395,7 @@ function muatUlangHalaman() {
           <div v-if="state.error" class="appfoot" style="color:#b3261e">Gagal memuat: {{ state.error }} — <a href="#" @click.prevent="loadList()">coba lagi</a></div>
           <template v-if="section === 'settings'">
             <WarehouseSettings />
-            <LabelLayoutSettings />
+            <div data-product-qr-slot="settings"></div>
           </template>
           <HandoverBoard v-else-if="section === 'handover'" />
           <FormOrderCreate v-else-if="foCreate" />
@@ -420,7 +418,6 @@ function muatUlangHalaman() {
       </div>
     </div>
 
-    <WorkOrderLabelDialogs />
 
     <dialog ref="errorDialog" class="dialog error-dialog" aria-labelledby="error-dialog-title" @cancel.prevent="closeError" @click.self="closeError">
       <div class="error-dialog-icon" aria-hidden="true">!</div>

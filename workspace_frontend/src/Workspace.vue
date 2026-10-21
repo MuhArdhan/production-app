@@ -3,7 +3,6 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { getWo, workOrders, STAGE_LABELS, openWo, state, uiTopLoading, producedQty, HANDOVER_LABELS } from './store.js'
 import { fmtDate, qtyMain, qtyStack } from './format.js'
 import { ChevronLeft, Check, CheckCircle2 } from 'lucide-vue-next'
-import { WorkOrderLabelButton } from '@product-qr/wo-labels'
 import { workOrderStages } from './work-order-stages.js'
 import StagePersiapan from './stages/StagePersiapan.vue'
 import StageMaterial from './stages/StageMaterial.vue'
@@ -171,7 +170,7 @@ onMounted(() => {
       </template>
     </nav>
 
-    <WorkOrderLabelButton :work-order="wo" />
+    <div data-product-qr-slot="actions" :data-work-order="JSON.stringify(wo)"></div>
 
     <p v-if="wo.uomWarning" class="callout">{{ wo.uomWarning }}</p>
     <p v-if="review" class="hint">Kolom kosong berarti belum tercatat.</p>
