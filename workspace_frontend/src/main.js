@@ -4,6 +4,9 @@ import { definePreset } from '@primeuix/themes'
 import Aura from '@primeuix/themes/aura'
 import App from './App.vue'
 import './styles.css'
+import { loadLabelRuntime } from './label-runtime.js'
+
+loadLabelRuntime()
 
 // FU73: PrimeVue 4 dipasang sekali untuk seluruh app, tapi komponen hanya
 // diimpor lokal di Dashboard.vue — halaman lain tidak berubah.

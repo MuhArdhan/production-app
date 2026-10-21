@@ -4,7 +4,6 @@ import { PackageCheck } from 'lucide-vue-next'
 import { confirmPostPacking, suggestionPreferences } from '../store.js'
 import { qtyMain } from '../format.js'
 import QtyInput from '../QtyInput.vue'
-import { labelCountForWorkOrder, offerLabelPrint } from '@product-qr/wo-labels'
 
 const props = defineProps({
   wo: { type: Object, required: true },
@@ -59,7 +58,9 @@ async function save() {
     jam: form.jam,
     qc: String(form.qc).trim()
   })
-  if (saved?.skipPrepacking) offerLabelPrint(saved.id, labelCountForWorkOrder(saved), 'Post-Packing')
+  if (saved) window.dispatchEvent(new CustomEvent('production:packing-saved', {
+    detail: { workOrder: saved, stage: 'postpacking' }
+  }))
 }
 </script>
 

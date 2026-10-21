@@ -4,16 +4,15 @@ import { readFileSync, existsSync } from 'node:fs'
 
 const source = name => readFileSync(new URL(`../src/${name}`, import.meta.url), 'utf8')
 
-test('WO mounts Product QR components while keeping the general action-error dialog', () => {
+test('WO exposes runtime slots while keeping the general action-error dialog', () => {
   const app = source('App.vue')
   assert.doesNotMatch(app, /labelPrintPrompt|labelPrintDialog|confirmLabelPrint|extraLabelCount|qz-tray/)
   assert.match(app, /state\.actionError/)
   assert.match(app, /ref="errorDialog"/)
   assert.match(app, /function closeError\(/)
-  assert.match(app, /import \{ WorkOrderLabelDialogs \} from '@product-qr\/wo-labels'/)
-  assert.match(app, /<WorkOrderLabelDialogs \/>/)
-  assert.match(app, /<template v-if="section === 'settings'">\s*<WarehouseSettings \/>\s*<LabelLayoutSettings \/>/)
-  assert.match(source('Workspace.vue'), /<WorkOrderLabelButton :work-order="wo" \/>/)
+  assert.doesNotMatch(app, /@product-qr|WorkOrderLabelDialogs|LabelLayoutSettings/)
+  assert.match(app, /<template v-if="section === 'settings'">\s*<WarehouseSettings \/>\s*<div data-product-qr-slot="settings">/)
+  assert.match(source('Workspace.vue'), /data-product-qr-slot="actions" :data-work-order="JSON.stringify\(wo\)"/)
   assert.doesNotMatch(source('Workspace.vue'), /offerLabelPrint|ws-label|labelSource|Cetak Label/)
 })
 
@@ -24,12 +23,13 @@ test('packing actions retain thin after-save adapters to Product QR', () => {
   assert.match(post, /await confirmPostPacking\(props\.wo, \{/)
   for (const code of [pre, post]) {
     assert.doesNotMatch(code, /from ['"]\.\.?\/.*label-print-prompt/)
-    assert.match(code, /from '@product-qr\/wo-labels'/)
+    assert.doesNotMatch(code, /@product-qr|offerLabelPrint|labelCountForWorkOrder/)
+    assert.match(code, /CustomEvent\('production:packing-saved'/)
     assert.match(code, /if \(!canSave\.value\) return/)
     for (const key of ['goodQty', 'rejectQty', 'trialQty', 'sisaQty', 'jam', 'qc']) assert.match(code, new RegExp(`${key}:`))
   }
-  assert.match(pre, /if \(saved\) offerLabelPrint/)
-  assert.match(post, /if \(saved\?\.skipPrepacking\) offerLabelPrint/)
+  assert.match(pre, /workOrder: saved, stage: 'prepacking'/)
+  assert.match(post, /workOrder: saved, stage: 'postpacking'/)
 })
 
 test('label clients and QZ dependency are no longer shipped by Production App', () => {
@@ -39,7 +39,8 @@ test('label clients and QZ dependency are no longer shipped by Production App', 
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url)))
   const lock = JSON.parse(readFileSync(new URL('../package-lock.json', import.meta.url)))
   assert.equal(pkg.dependencies['qz-tray'], undefined)
-  assert.equal(pkg.dependencies['@product-qr/wo-labels'], 'file:../../product_qr/wo_labels_frontend')
+  assert.equal(pkg.dependencies['@product-qr/wo-labels'], undefined)
   assert.equal(lock.packages[''].dependencies['qz-tray'], undefined)
-  assert.ok(lock.packages['node_modules/@product-qr/wo-labels'])
+  assert.equal(lock.packages['node_modules/@product-qr/wo-labels'], undefined)
+  assert.match(source('label-runtime.js'), /import\(\/\* @vite-ignore \*\/ url\)/)
 })
